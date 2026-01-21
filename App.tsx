@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AdminView } from './views/AdminView';
 import { EmployeeView } from './views/EmployeeView';
 import { ClientView } from './views/ClientView';
@@ -230,6 +231,7 @@ function App() {
   return (
     <div className="font-sans antialiased text-slate-900 h-screen overflow-hidden bg-slate-50">
       <ToastContainer toasts={toasts} />
+      <SpeedInsights />
       
       {currentUser.role === 'ADMIN' && (
         <AdminView 
