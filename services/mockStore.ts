@@ -1,4 +1,5 @@
-import { ServiceOrder, OrderStatus, TimeRecord, Ticket, User, TicketStatus, HRRequest, HRRequestStatus, ServiceReport } from '../types';
+
+import { ServiceOrder, OrderStatus, TimeRecord, Ticket, User, TicketStatus, HRRequest, HRRequestStatus, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem } from '../types';
 
 // Mock Data
 export const MOCK_USERS: User[] = [
@@ -56,6 +57,7 @@ export const INITIAL_ORDERS: ServiceOrder[] = [
     status: OrderStatus.PENDING,
     assignedToId: 'u1',
     date: new Date().toISOString().split('T')[0],
+    priority: 'HIGH'
   },
   {
     id: 'so2',
@@ -68,6 +70,7 @@ export const INITIAL_ORDERS: ServiceOrder[] = [
     status: OrderStatus.COMPLETED,
     assignedToId: 'u1',
     date: new Date().toISOString().split('T')[0],
+    priority: 'MEDIUM'
   },
   {
     id: 'so3',
@@ -80,6 +83,7 @@ export const INITIAL_ORDERS: ServiceOrder[] = [
     status: OrderStatus.PENDING,
     assignedToId: 'u2',
     date: new Date().toISOString().split('T')[0],
+    priority: 'LOW'
   }
 ];
 
@@ -148,4 +152,39 @@ export const INITIAL_REPORTS: ServiceReport[] = [
     ],
     signatureName: 'Roberto Gerente'
   }
+];
+
+// SAAS INITIAL DATA
+
+export const INITIAL_INVENTORY: InventoryItem[] = [
+    { id: 'iv1', name: 'Cabo de Rede CAT6', sku: 'CAB-001', category: 'Cabeamento', quantity: 150, minQuantity: 50, price: 2.50, unit: 'metros', lastUpdated: new Date().toISOString() },
+    { id: 'iv2', name: 'Roteador Wi-Fi 6', sku: 'NET-002', category: 'Equipamentos', quantity: 12, minQuantity: 5, price: 350.00, unit: 'un', lastUpdated: new Date().toISOString() },
+    { id: 'iv3', name: 'Conector RJ45', sku: 'CON-003', category: 'Acessórios', quantity: 500, minQuantity: 100, price: 0.50, unit: 'un', lastUpdated: new Date().toISOString() },
+    { id: 'iv4', name: 'Câmera IP 1080p', sku: 'SEC-004', category: 'Segurança', quantity: 8, minQuantity: 10, price: 180.00, unit: 'un', lastUpdated: new Date().toISOString() },
+];
+
+export const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  { id: 'al1', action: 'SYSTEM_INIT', actorName: 'System', details: 'Plataforma inicializada com sucesso', timestamp: new Date(Date.now() - 10000000).toISOString(), severity: 'INFO' },
+  { id: 'al2', action: 'USER_LOGIN', actorName: 'Roberto Admin', details: 'Login efetuado via IP 192.168.1.1', timestamp: new Date(Date.now() - 3600000).toISOString(), severity: 'INFO' },
+];
+
+export const INITIAL_NOTIFICATIONS: Notification[] = [
+  { id: 'n1', title: 'Pagamento Confirmado', message: 'A fatura de Outubro foi processada.', type: 'success', read: false, timestamp: new Date().toISOString() },
+  { id: 'n2', title: 'Alerta de Estoque', message: 'Câmera IP 1080p está abaixo do mínimo.', type: 'warning', read: false, timestamp: new Date(Date.now() - 86400000).toISOString() },
+];
+
+export const INITIAL_SUBSCRIPTION: Subscription = {
+  plan: 'PROFESSIONAL',
+  status: 'ACTIVE',
+  nextBillingDate: new Date(Date.now() + 2592000000).toISOString(), // +30 days
+  usersLimit: 10,
+  storageLimitGB: 50,
+  currentUsers: 4,
+  currentStorageGB: 12.5
+};
+
+export const INITIAL_INVOICES: Invoice[] = [
+  { id: 'inv-001', date: '2023-10-01', amount: 299.90, status: 'PAID', pdfUrl: '#' },
+  { id: 'inv-002', date: '2023-11-01', amount: 299.90, status: 'PAID', pdfUrl: '#' },
+  { id: 'inv-003', date: '2023-12-01', amount: 299.90, status: 'PENDING', pdfUrl: '#' },
 ];

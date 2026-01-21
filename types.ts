@@ -1,3 +1,4 @@
+
 export type Role = 'ADMIN' | 'EMPLOYEE' | 'CLIENT';
 
 export enum OrderStatus {
@@ -43,6 +44,8 @@ export interface ServiceOrder {
   status: OrderStatus;
   assignedToId: string; // Employee ID
   date: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  partsUsed?: { itemId: string; quantity: number }[];
 }
 
 export interface TimeRecord {
@@ -102,4 +105,54 @@ export interface ServiceReport {
   comments: string;
   photos: string[]; // URLs
   signatureName: string;
+}
+
+// --- NOVOS TIPOS PARA SAAS ---
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  minQuantity: number;
+  price: number;
+  unit: string;
+  lastUpdated: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string; // Ex: "CREATE_ORDER", "DELETE_USER"
+  actorName: string;
+  details: string;
+  timestamp: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  read: boolean;
+  timestamp: string;
+}
+
+export interface Invoice {
+  id: string;
+  date: string;
+  amount: number;
+  status: 'PAID' | 'PENDING' | 'OVERDUE';
+  pdfUrl: string;
+}
+
+export interface Subscription {
+  plan: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
+  status: 'ACTIVE' | 'CANCELED' | 'TRIAL';
+  nextBillingDate: string;
+  usersLimit: number;
+  storageLimitGB: number;
+  currentUsers: number;
+  currentStorageGB: number;
 }
