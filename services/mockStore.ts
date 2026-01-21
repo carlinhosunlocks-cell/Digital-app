@@ -1,5 +1,5 @@
 
-import { ServiceOrder, OrderStatus, TimeRecord, Ticket, User, TicketStatus, HRRequest, HRRequestStatus, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem } from '../types';
+import { ServiceOrder, OrderStatus, TimeRecord, Ticket, User, TicketStatus, HRRequest, HRRequestStatus, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem, TechnicianStockItem } from '../types';
 
 // Mock Data
 export const MOCK_USERS: User[] = [
@@ -150,7 +150,10 @@ export const INITIAL_REPORTS: ServiceReport[] = [
       'https://images.unsplash.com/photo-1558494949-ef526b0042a0?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
       'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
     ],
-    signatureName: 'Roberto Gerente'
+    signatureName: 'Roberto Gerente',
+    partsUsed: [
+      { itemId: 'iv1', itemName: 'Cabo de Rede CAT6', quantity: 30 }
+    ]
   }
 ];
 
@@ -161,6 +164,12 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     { id: 'iv2', name: 'Roteador Wi-Fi 6', sku: 'NET-002', category: 'Equipamentos', quantity: 12, minQuantity: 5, price: 350.00, unit: 'un', lastUpdated: new Date().toISOString() },
     { id: 'iv3', name: 'Conector RJ45', sku: 'CON-003', category: 'Acessórios', quantity: 500, minQuantity: 100, price: 0.50, unit: 'un', lastUpdated: new Date().toISOString() },
     { id: 'iv4', name: 'Câmera IP 1080p', sku: 'SEC-004', category: 'Segurança', quantity: 8, minQuantity: 10, price: 180.00, unit: 'un', lastUpdated: new Date().toISOString() },
+];
+
+export const INITIAL_TECH_STOCK: TechnicianStockItem[] = [
+    { id: 'ts1', technicianId: 'u1', itemId: 'iv1', itemName: 'Cabo de Rede CAT6', quantity: 20, lastUpdated: new Date().toISOString() },
+    { id: 'ts2', technicianId: 'u1', itemId: 'iv3', itemName: 'Conector RJ45', quantity: 50, lastUpdated: new Date().toISOString() },
+    { id: 'ts3', technicianId: 'u2', itemId: 'iv2', itemName: 'Roteador Wi-Fi 6', quantity: 1, lastUpdated: new Date().toISOString() },
 ];
 
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [

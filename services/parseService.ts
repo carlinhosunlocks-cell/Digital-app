@@ -1,6 +1,6 @@
 
-import { User, ServiceOrder, Ticket, Role, ServiceReport, TimeRecord, TicketStatus, OrderStatus, AuditLog, Notification, Subscription, Invoice, InventoryItem } from '../types';
-import { MOCK_USERS, INITIAL_ORDERS, INITIAL_TICKETS, INITIAL_REPORTS, INITIAL_TIME_RECORDS, INITIAL_AUDIT_LOGS, INITIAL_NOTIFICATIONS, INITIAL_SUBSCRIPTION, INITIAL_INVOICES, INITIAL_INVENTORY } from './mockStore';
+import { User, ServiceOrder, Ticket, Role, ServiceReport, TimeRecord, TicketStatus, OrderStatus, AuditLog, Notification, Subscription, Invoice, InventoryItem, TechnicianStockItem } from '../types';
+import { MOCK_USERS, INITIAL_ORDERS, INITIAL_TICKETS, INITIAL_REPORTS, INITIAL_TIME_RECORDS, INITIAL_AUDIT_LOGS, INITIAL_NOTIFICATIONS, INITIAL_SUBSCRIPTION, INITIAL_INVOICES, INITIAL_INVENTORY, INITIAL_TECH_STOCK } from './mockStore';
 
 const DB_KEYS = {
   USERS: 'digital_db_users_v1',
@@ -14,7 +14,8 @@ const DB_KEYS = {
   NOTIFS: 'digital_db_notifs_v1',
   SUB: 'digital_db_sub_v1',
   INVOICES: 'digital_db_invoices_v1',
-  INVENTORY: 'digital_db_inventory_v1'
+  INVENTORY: 'digital_db_inventory_v1',
+  TECH_STOCK: 'digital_db_tech_stock_v1'
 };
 
 const delay = (ms: number = 600) => new Promise(resolve => setTimeout(resolve, ms));
@@ -34,6 +35,7 @@ const initDB = () => {
   if (!localStorage.getItem(DB_KEYS.SUB)) localStorage.setItem(DB_KEYS.SUB, JSON.stringify(INITIAL_SUBSCRIPTION));
   if (!localStorage.getItem(DB_KEYS.INVOICES)) localStorage.setItem(DB_KEYS.INVOICES, JSON.stringify(INITIAL_INVOICES));
   if (!localStorage.getItem(DB_KEYS.INVENTORY)) localStorage.setItem(DB_KEYS.INVENTORY, JSON.stringify(INITIAL_INVENTORY));
+  if (!localStorage.getItem(DB_KEYS.TECH_STOCK)) localStorage.setItem(DB_KEYS.TECH_STOCK, JSON.stringify(INITIAL_TECH_STOCK));
 };
 
 initDB();
@@ -266,8 +268,28 @@ export const apiService = {
         services: reportData.services || { gate: false, cctv: false, intercom: false, lock: false, preventive: false },
         comments: reportData.comments || '',
         photos: reportData.photos || [],
-        signatureName: reportData.signatureName || ''
+        signatureName: reportData.signatureName || '',
+        partsUsed: reportData.partsUsed || []
     };
+
+    // Consumir o estoque do técnico se houver peças usadas
+    if (newReport.partsUsed && newReport.partsUsed.length > 0) {
+        // Encontrar o técnico
+        const technicianId = (await this.getCurrentUser())?.id;
+        if(technicianId) {
+            const techStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
+            
+            newReport.partsUsed.forEach(part => {
+                const stockIndex = techStock.findIndex(ts => ts.technicianId === technicianId && ts.itemId === part.itemId);
+                if (stockIndex !== -1) {
+                    techStock[stockIndex].quantity = Math.max(0, techStock[stockIndex].quantity - part.quantity);
+                    techStock[stockIndex].lastUpdated = new Date().toISOString();
+                }
+            });
+            saveCollection(DB_KEYS.TECH_STOCK, techStock);
+            createAuditLog('USE_PART', `Técnico usou materiais na OS ${newReport.orderId}`);
+        }
+    }
 
     reports.push(newReport);
     saveCollection(DB_KEYS.REPORTS, reports);
@@ -362,5 +384,51 @@ export const apiService = {
       saveCollection(DB_KEYS.INVENTORY, items);
       createAuditLog('ADD_INVENTORY', `Item adicionado: ${newItem.name}`);
       return newItem;
+  },
+
+  async getTechnicianStock(technicianId: string): Promise<TechnicianStockItem[]> {
+      await delay(300);
+      const allStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
+      return allStock.filter(item => item.technicianId === technicianId);
+  },
+
+  async transferStockToTechnician(itemId: string, technicianId: string, quantity: number): Promise<void> {
+      await delay();
+      const inventory = getCollection<InventoryItem>(DB_KEYS.INVENTORY);
+      const techStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
+      const users = getCollection<User>(DB_KEYS.USERS);
+
+      const invIndex = inventory.findIndex(i => i.id === itemId);
+      if (invIndex === -1) throw new Error("Item não encontrado");
+      
+      if (inventory[invIndex].quantity < quantity) throw new Error("Estoque insuficiente");
+
+      const technician = users.find(u => u.id === technicianId);
+      if (!technician) throw new Error("Técnico não encontrado");
+
+      // Decrement main inventory
+      inventory[invIndex].quantity -= quantity;
+      
+      // Increment or Create tech stock
+      const existingTechItemIndex = techStock.findIndex(ts => ts.technicianId === technicianId && ts.itemId === itemId);
+      
+      if (existingTechItemIndex !== -1) {
+          techStock[existingTechItemIndex].quantity += quantity;
+          techStock[existingTechItemIndex].lastUpdated = new Date().toISOString();
+      } else {
+          techStock.push({
+              id: Date.now().toString(),
+              technicianId,
+              itemId,
+              itemName: inventory[invIndex].name,
+              quantity,
+              lastUpdated: new Date().toISOString()
+          });
+      }
+
+      saveCollection(DB_KEYS.INVENTORY, inventory);
+      saveCollection(DB_KEYS.TECH_STOCK, techStock);
+      
+      createAuditLog('TRANSFER_STOCK', `Transferido ${quantity}x ${inventory[invIndex].name} para ${technician.name}`);
   }
 };

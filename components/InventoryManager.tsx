@@ -1,22 +1,34 @@
 
 import React, { useState } from 'react';
-import { InventoryItem } from '../types';
-import { Package, Search, AlertTriangle, Plus, Filter, Edit2, Trash2, TrendingDown } from 'lucide-react';
+import { InventoryItem, User } from '../types';
+import { Package, Search, AlertTriangle, Plus, Filter, Edit2, Trash2, TrendingDown, Truck, ArrowRight } from 'lucide-react';
 
 interface InventoryManagerProps {
   inventory: InventoryItem[];
+  employees: User[];
   onSaveItem: (item: Partial<InventoryItem>) => void;
+  onTransferItem: (itemId: string, technicianId: string, quantity: number) => void;
 }
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, onSaveItem }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, employees, onSaveItem, onTransferItem }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<InventoryItem>>({});
+  
+  // Transfer State
+  const [transferData, setTransferData] = useState({
+      itemId: '',
+      technicianId: '',
+      quantity: 1
+  });
 
   const filteredInventory = inventory.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     item.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const technicians = employees.filter(e => e.role === 'EMPLOYEE');
 
   const handleEdit = (item: InventoryItem) => {
     setEditingItem(item);
@@ -28,10 +40,21 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, onSaveIt
     setIsModalOpen(true);
   };
 
+  const handleTransfer = (item: InventoryItem) => {
+      setTransferData({ itemId: item.id, technicianId: '', quantity: 1 });
+      setIsTransferModalOpen(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveItem(editingItem);
     setIsModalOpen(false);
+  };
+
+  const handleTransferSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      onTransferItem(transferData.itemId, transferData.technicianId, transferData.quantity);
+      setIsTransferModalOpen(false);
   };
 
   return (
@@ -117,7 +140,10 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, onSaveIt
                            R$ {item.price.toFixed(2)}
                         </td>
                         <td className="px-6 py-4 text-right">
-                           <button onClick={() => handleEdit(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit2 size={16}/></button>
+                           <div className="flex gap-2 justify-end">
+                                <button onClick={() => handleTransfer(item)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition" title="Entregar Material"><Truck size={16}/></button>
+                                <button onClick={() => handleEdit(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"><Edit2 size={16}/></button>
+                           </div>
                         </td>
                      </tr>
                   ))}
@@ -164,6 +190,59 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, onSaveIt
                    <div className="flex gap-2 mt-6">
                       <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
                       <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200">Salvar Item</button>
+                   </div>
+                </form>
+             </div>
+          </div>
+       )}
+
+       {isTransferModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+             <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+                <h3 className="text-xl font-bold mb-1 text-slate-800">Entregar Material</h3>
+                <p className="text-sm text-slate-500 mb-6">Transferir do estoque central para um técnico.</p>
+                
+                <form onSubmit={handleTransferSubmit} className="space-y-4">
+                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
+                        <p className="text-xs font-bold text-slate-400 uppercase">Item Selecionado</p>
+                        <p className="font-bold text-slate-800">{inventory.find(i => i.id === transferData.itemId)?.name}</p>
+                        <p className="text-xs text-slate-500">Disponível: {inventory.find(i => i.id === transferData.itemId)?.quantity}</p>
+                   </div>
+
+                   <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Técnico Responsável</label>
+                        <select 
+                            required
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 font-bold text-slate-700"
+                            value={transferData.technicianId}
+                            onChange={e => setTransferData({...transferData, technicianId: e.target.value})}
+                        >
+                            <option value="">Selecione um técnico...</option>
+                            {technicians.map(tech => (
+                                <option key={tech.id} value={tech.id}>{tech.name}</option>
+                            ))}
+                        </select>
+                   </div>
+                   
+                   <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Quantidade a Transferir</label>
+                        <div className="flex items-center gap-4">
+                            <input 
+                                type="number" 
+                                min="1"
+                                max={inventory.find(i => i.id === transferData.itemId)?.quantity}
+                                className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 font-bold text-lg"
+                                value={transferData.quantity}
+                                onChange={e => setTransferData({...transferData, quantity: parseInt(e.target.value)})}
+                            />
+                        </div>
+                   </div>
+
+                   <div className="flex gap-2 mt-6">
+                      <button type="button" onClick={() => setIsTransferModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
+                      <button type="submit" className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg shadow-green-200 flex items-center justify-center gap-2">
+                        <ArrowRight size={18}/> Transferir
+                      </button>
                    </div>
                 </form>
              </div>

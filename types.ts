@@ -45,7 +45,6 @@ export interface ServiceOrder {
   assignedToId: string; // Employee ID
   date: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
-  partsUsed?: { itemId: string; quantity: number }[];
 }
 
 export interface TimeRecord {
@@ -105,6 +104,7 @@ export interface ServiceReport {
   comments: string;
   photos: string[]; // URLs
   signatureName: string;
+  partsUsed?: { itemId: string; itemName: string; quantity: number }[];
 }
 
 // --- NOVOS TIPOS PARA SAAS ---
@@ -118,6 +118,15 @@ export interface InventoryItem {
   minQuantity: number;
   price: number;
   unit: string;
+  lastUpdated: string;
+}
+
+export interface TechnicianStockItem {
+  id: string;
+  technicianId: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
   lastUpdated: string;
 }
 

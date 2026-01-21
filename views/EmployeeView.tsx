@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle } from 'lucide-react';
-import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport } from '../types';
+
+import React, { useState, useEffect } from 'react';
+import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus } from 'lucide-react';
+import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem } from '../types';
 import MapVisualizer from '../components/MapVisualizer';
+import { apiService } from '../services/parseService';
 
 interface EmployeeViewProps {
   currentUser: User;
@@ -13,9 +15,23 @@ interface EmployeeViewProps {
 }
 
 export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, onCreateReport }) => {
-  const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report'>('route');
+  const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock'>('route');
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<ServiceOrder | null>(null);
+  const [myStock, setMyStock] = useState<TechnicianStockItem[]>([]);
   
+  // Load stock
+  useEffect(() => {
+      const fetchStock = async () => {
+          if (currentUser.id) {
+            const stock = await apiService.getTechnicianStock(currentUser.id);
+            setMyStock(stock);
+          }
+      };
+      if (activeTab === 'stock' || activeTab === 'report') {
+          fetchStock();
+      }
+  }, [activeTab, currentUser.id]);
+
   // Report Form State
   const [reportForm, setReportForm] = useState({
     gate: false,
@@ -29,6 +45,9 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
     signature: ''
   });
 
+  const [usedParts, setUsedParts] = useState<{itemId: string, itemName: string, quantity: number}[]>([]);
+  const [partSelection, setPartSelection] = useState({ itemId: '', quantity: 1 });
+
   const myOrders = orders.filter(o => o.assignedToId === currentUser.id);
   const todaysRecords = timeRecords.filter(r => r.employeeId === currentUser.id && new Date(r.timestamp).toDateString() === new Date().toDateString());
   const isClockedIn = todaysRecords.length > 0 && todaysRecords[todaysRecords.length - 1].type === 'CLOCK_IN';
@@ -36,6 +55,30 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
   const handleNavigate = (order: ServiceOrder) => {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${order.lat},${order.lng}`;
     window.open(url, '_blank');
+  };
+
+  const handleAddPart = () => {
+      if (!partSelection.itemId || partSelection.quantity <= 0) return;
+      const stockItem = myStock.find(s => s.itemId === partSelection.itemId);
+      if (!stockItem) return;
+
+      if (partSelection.quantity > stockItem.quantity) {
+          alert('Quantidade indisponível no seu estoque.');
+          return;
+      }
+
+      setUsedParts([...usedParts, { 
+          itemId: partSelection.itemId, 
+          itemName: stockItem.itemName, 
+          quantity: partSelection.quantity 
+      }]);
+      setPartSelection({ itemId: '', quantity: 1 });
+  };
+
+  const handleRemovePart = (index: number) => {
+      const newParts = [...usedParts];
+      newParts.splice(index, 1);
+      setUsedParts(newParts);
   };
 
   const handleSubmitReport = () => {
@@ -61,12 +104,14 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
       photos: [
         'https://images.unsplash.com/photo-1558494949-ef526b0042a0?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
         'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60'
-      ], // Simulating photo upload
-      signatureName: reportForm.signature || 'Cliente'
+      ], 
+      signatureName: reportForm.signature || 'Cliente',
+      partsUsed: usedParts
     };
     
     onCreateReport(newReport);
     setReportForm({ gate: false, cctv: false, intercom: false, lock: false, preventive: false, startTime: '', endTime: '', comments: '', signature: '' });
+    setUsedParts([]);
     setSelectedOrderForReport(null);
     setActiveTab('route');
   };
@@ -178,6 +223,43 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
           </div>
         )}
 
+        {/* STOCK TAB */}
+        {activeTab === 'stock' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
+                <div className="flex justify-between items-center px-2">
+                    <h2 className="text-xl font-bold text-white">Meu Estoque</h2>
+                    <div className="bg-white/10 p-2 rounded-xl text-xs text-white/70">
+                        {myStock.length} Itens
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                    {myStock.map(item => (
+                        <div key={item.id} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400">
+                                    <Package size={24}/>
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-white">{item.itemName}</h4>
+                                    <p className="text-xs text-white/50">Atualizado em: {new Date(item.lastUpdated).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className="block text-2xl font-bold text-white">{item.quantity}</span>
+                                <span className="text-[10px] text-white/40 uppercase">Quantidade</span>
+                            </div>
+                        </div>
+                    ))}
+                    {myStock.length === 0 && (
+                        <div className="text-center py-10 text-white/30 border border-dashed border-white/10 rounded-2xl">
+                            Você não possui materiais atribuídos.
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
         {/* CLOCK IN TAB */}
         {activeTab === 'clock' && (
           <div className="flex flex-col items-center justify-center h-full space-y-10 animate-in fade-in zoom-in duration-300">
@@ -273,6 +355,41 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
                        ))}
                     </div>
 
+                    {/* Parts Used Section */}
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                        <p className="text-xs text-white/40 uppercase font-bold mb-3">Materiais Utilizados</p>
+                        
+                        <div className="flex gap-2 mb-4">
+                            <select 
+                                className="flex-1 bg-white/10 rounded-xl p-3 text-white text-sm outline-none border border-white/10"
+                                value={partSelection.itemId}
+                                onChange={e => setPartSelection({...partSelection, itemId: e.target.value})}
+                            >
+                                <option value="">Selecionar Material...</option>
+                                {myStock.map(item => (
+                                    <option key={item.itemId} value={item.itemId}>{item.itemName} (Disp: {item.quantity})</option>
+                                ))}
+                            </select>
+                            <div className="flex items-center gap-2 bg-white/10 rounded-xl px-2">
+                                <button onClick={() => setPartSelection({...partSelection, quantity: Math.max(1, partSelection.quantity - 1)})}><Minus size={14}/></button>
+                                <span className="w-6 text-center text-sm font-bold">{partSelection.quantity}</span>
+                                <button onClick={() => setPartSelection({...partSelection, quantity: partSelection.quantity + 1})}><Plus size={14}/></button>
+                            </div>
+                            <button onClick={handleAddPart} className="bg-blue-600 p-3 rounded-xl"><Plus size={18}/></button>
+                        </div>
+
+                        {usedParts.length > 0 && (
+                            <div className="space-y-2">
+                                {usedParts.map((part, idx) => (
+                                    <div key={idx} className="flex justify-between items-center bg-black/20 p-2 rounded-lg">
+                                        <span className="text-sm">{part.quantity}x {part.itemName}</span>
+                                        <button onClick={() => handleRemovePart(idx)} className="text-red-400 p-1"><X size={14}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Times */}
                     <div className="grid grid-cols-2 gap-4">
                        <div>
@@ -292,23 +409,6 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
                              value={reportForm.endTime}
                              onChange={e => setReportForm({...reportForm, endTime: e.target.value})}
                           />
-                       </div>
-                    </div>
-
-                    {/* Photos Simulation */}
-                    <div>
-                       <p className="text-xs text-white/40 uppercase font-bold pl-2 mb-2">Fotos do Serviço</p>
-                       <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                          <button className="w-20 h-20 shrink-0 rounded-xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-white/40 hover:text-white hover:border-white transition">
-                             <Camera size={20} />
-                             <span className="text-[10px] mt-1">Add</span>
-                          </button>
-                          {[1,2].map(i => (
-                             <div key={i} className="w-20 h-20 shrink-0 rounded-xl bg-gray-800 relative overflow-hidden border border-white/10">
-                                <img src={`https://picsum.photos/200?random=${i}`} alt="" className="w-full h-full object-cover opacity-70"/>
-                                <div className="absolute top-1 right-1 bg-black/50 rounded-full p-1"><Check size={10} className="text-green-400"/></div>
-                             </div>
-                          ))}
                        </div>
                     </div>
 
@@ -361,6 +461,7 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
           {[
             { id: 'route', icon: Navigation, label: 'Rota' },
             { id: 'clock', icon: Clock, label: 'Ponto' },
+            { id: 'stock', icon: Package, label: 'Estoque' },
             { id: 'report', icon: FileText, label: 'Relatório' }
           ].map(item => (
             <button 
