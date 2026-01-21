@@ -1,0 +1,7 @@
+{
+  "name": "Digital Equipamentos",
+  "description": "Plataforma de gestão de serviços, rotas e manutenção com interfaces para clientes, funcionários e administradores.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
