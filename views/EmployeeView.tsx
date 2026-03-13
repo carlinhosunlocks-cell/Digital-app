@@ -338,18 +338,18 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
                              <span className="text-sm font-medium text-white">{item.label}</span>
                              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
                                 // @ts-ignore
-                                reportForm[item.id] ? 'bg-blue-600 border-blue-600' : 'border-white/30'
+                                reportForm[item.id as keyof typeof reportForm] ? 'bg-blue-600 border-blue-600' : 'border-white/30'
                              }`}>
                                 <input 
                                   type="checkbox" 
                                   className="hidden"
                                   // @ts-ignore
-                                  checked={reportForm[item.id]}
+                                  checked={reportForm[item.id as keyof typeof reportForm]}
                                   // @ts-ignore
                                   onChange={e => setReportForm({...reportForm, [item.id]: e.target.checked})}
                                 />
                                 {/* @ts-ignore */}
-                                {reportForm[item.id] && <Check size={14} className="text-white" />}
+                                {reportForm[item.id as keyof typeof reportForm] && <Check size={14} className="text-white" />}
                              </div>
                           </label>
                        ))}

@@ -1,434 +1,436 @@
 
-import { User, ServiceOrder, Ticket, Role, ServiceReport, TimeRecord, TicketStatus, OrderStatus, AuditLog, Notification, Subscription, Invoice, InventoryItem, TechnicianStockItem } from '../types';
-import { MOCK_USERS, INITIAL_ORDERS, INITIAL_TICKETS, INITIAL_REPORTS, INITIAL_TIME_RECORDS, INITIAL_AUDIT_LOGS, INITIAL_NOTIFICATIONS, INITIAL_SUBSCRIPTION, INITIAL_INVOICES, INITIAL_INVENTORY, INITIAL_TECH_STOCK } from './mockStore';
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  addDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot,
+  Timestamp,
+  getDocFromServer
+} from 'firebase/firestore';
+import { 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  createUserWithEmailAndPassword
+} from 'firebase/auth';
+import { db, auth } from '../firebase';
+import { 
+  User, 
+  ServiceOrder, 
+  Ticket, 
+  Role, 
+  ServiceReport, 
+  TimeRecord, 
+  TicketStatus, 
+  OrderStatus, 
+  AuditLog, 
+  Notification, 
+  Subscription, 
+  Invoice, 
+  InventoryItem, 
+  TechnicianStockItem 
+} from '../types';
 
-const DB_KEYS = {
-  USERS: 'digital_db_users_v1',
-  ORDERS: 'digital_db_orders_v1',
-  TICKETS: 'digital_db_tickets_v1',
-  REPORTS: 'digital_db_reports_v1',
-  TIME: 'digital_db_time_v1',
-  SESSION: 'digital_db_session_v1',
-  // SaaS Keys
-  AUDIT: 'digital_db_audit_v1',
-  NOTIFS: 'digital_db_notifs_v1',
-  SUB: 'digital_db_sub_v1',
-  INVOICES: 'digital_db_invoices_v1',
-  INVENTORY: 'digital_db_inventory_v1',
-  TECH_STOCK: 'digital_db_tech_stock_v1'
-};
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
 
-const delay = (ms: number = 600) => new Promise(resolve => setTimeout(resolve, ms));
-
-const initDB = () => {
-  if (typeof window === 'undefined') return;
-
-  if (!localStorage.getItem(DB_KEYS.USERS)) localStorage.setItem(DB_KEYS.USERS, JSON.stringify(MOCK_USERS));
-  if (!localStorage.getItem(DB_KEYS.ORDERS)) localStorage.setItem(DB_KEYS.ORDERS, JSON.stringify(INITIAL_ORDERS));
-  if (!localStorage.getItem(DB_KEYS.TICKETS)) localStorage.setItem(DB_KEYS.TICKETS, JSON.stringify(INITIAL_TICKETS));
-  if (!localStorage.getItem(DB_KEYS.REPORTS)) localStorage.setItem(DB_KEYS.REPORTS, JSON.stringify(INITIAL_REPORTS));
-  if (!localStorage.getItem(DB_KEYS.TIME)) localStorage.setItem(DB_KEYS.TIME, JSON.stringify(INITIAL_TIME_RECORDS));
-  
-  // Init SaaS Data
-  if (!localStorage.getItem(DB_KEYS.AUDIT)) localStorage.setItem(DB_KEYS.AUDIT, JSON.stringify(INITIAL_AUDIT_LOGS));
-  if (!localStorage.getItem(DB_KEYS.NOTIFS)) localStorage.setItem(DB_KEYS.NOTIFS, JSON.stringify(INITIAL_NOTIFICATIONS));
-  if (!localStorage.getItem(DB_KEYS.SUB)) localStorage.setItem(DB_KEYS.SUB, JSON.stringify(INITIAL_SUBSCRIPTION));
-  if (!localStorage.getItem(DB_KEYS.INVOICES)) localStorage.setItem(DB_KEYS.INVOICES, JSON.stringify(INITIAL_INVOICES));
-  if (!localStorage.getItem(DB_KEYS.INVENTORY)) localStorage.setItem(DB_KEYS.INVENTORY, JSON.stringify(INITIAL_INVENTORY));
-  if (!localStorage.getItem(DB_KEYS.TECH_STOCK)) localStorage.setItem(DB_KEYS.TECH_STOCK, JSON.stringify(INITIAL_TECH_STOCK));
-};
-
-initDB();
-
-const getCollection = <T>(key: string): T[] => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
-};
-
-const saveCollection = <T>(key: string, data: T[]) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
-
-const createAuditLog = (action: string, details: string, severity: 'INFO' | 'WARNING' | 'CRITICAL' = 'INFO') => {
-    const logs = getCollection<AuditLog>(DB_KEYS.AUDIT);
-    const sessionStr = localStorage.getItem(DB_KEYS.SESSION);
-    const actorName = sessionStr ? JSON.parse(sessionStr).name : 'Sistema';
-
-    const newLog: AuditLog = {
-        id: Date.now().toString(),
-        action,
-        actorName,
-        details,
-        severity,
-        timestamp: new Date().toISOString()
-    };
-    logs.unshift(newLog);
-    saveCollection(DB_KEYS.AUDIT, logs);
-};
-
-const createNotification = (title: string, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
-    const notifs = getCollection<Notification>(DB_KEYS.NOTIFS);
-    const newNotif: Notification = {
-        id: Date.now().toString(),
-        title,
-        message,
-        type,
-        read: false,
-        timestamp: new Date().toISOString()
-    };
-    notifs.unshift(newNotif);
-    saveCollection(DB_KEYS.NOTIFS, notifs);
-};
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export const apiService = {
   async login(email: string, pass: string): Promise<User> {
-    await delay(800);
-    const users = getCollection<User>(DB_KEYS.USERS);
-    const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-
-    if (!user) {
-        if(email === 'admin@admin.com' && pass === '123') {
-            const admin = MOCK_USERS.find(u => u.role === 'ADMIN')!;
-            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(admin));
-            createAuditLog('LOGIN', `Login de Administrador: ${email}`);
-            return admin;
-        }
-        throw new Error("Usuário não encontrado.");
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      if (userDoc.exists()) {
+        return { id: userDoc.id, ...userDoc.data() } as User;
+      }
+      // If user doc doesn't exist but auth does (e.g. first time login for bootstrap admin)
+      const newUser: User = {
+        id: userCredential.user.uid,
+        name: userCredential.user.displayName || email.split('@')[0],
+        email: email,
+        role: email === 'admin@admin.com' ? 'ADMIN' : 'EMPLOYEE',
+        status: 'active'
+      };
+      await this.saveUser(newUser);
+      return newUser;
+    } catch (error) {
+      throw new Error("Credenciais inválidas ou erro de sistema.");
     }
-
-    localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(user));
-    createAuditLog('LOGIN', `Usuário logado: ${user.name}`);
-    return user;
   },
 
   async logout() {
-    createAuditLog('LOGOUT', 'Usuário desconectado');
-    await delay(200);
-    localStorage.removeItem(DB_KEYS.SESSION);
+    await signOut(auth);
   },
 
-  async getCurrentUser(): Promise<User | null> {
-    const session = localStorage.getItem(DB_KEYS.SESSION);
-    if (!session) return null;
-    return JSON.parse(session);
+  async getCurrentUser(uid?: string): Promise<User | null> {
+    const targetUid = uid || auth.currentUser?.uid;
+    if (!targetUid) return null;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', targetUid));
+      if (userDoc.exists()) {
+        return { id: userDoc.id, ...userDoc.data() } as User;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `users/${targetUid}`);
+      return null;
+    }
   },
 
   async getUsers(): Promise<User[]> {
-    await delay();
-    return getCollection<User>(DB_KEYS.USERS);
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+      return [];
+    }
   },
 
   async saveUser(userData: Partial<User> & { password?: string }): Promise<User> {
-    await delay();
-    const users = getCollection<User>(DB_KEYS.USERS);
-    
-    if (userData.id) {
-      const index = users.findIndex(u => u.id === userData.id);
-      if (index !== -1) {
-        const updatedUser = { ...users[index], ...userData };
-        users[index] = updatedUser;
-        saveCollection(DB_KEYS.USERS, users);
-        createAuditLog('UPDATE_USER', `Usuário atualizado: ${updatedUser.name}`);
-        
-        const currentUser = await this.getCurrentUser();
-        if(currentUser && currentUser.id === updatedUser.id) {
-            localStorage.setItem(DB_KEYS.SESSION, JSON.stringify(updatedUser));
-        }
-        return updatedUser;
-      }
-      throw new Error("Usuário não encontrado.");
-    } else {
-      const newUser: User = {
-        id: Date.now().toString(),
-        name: userData.name || 'Novo Usuário',
-        email: userData.email,
-        role: userData.role || 'EMPLOYEE',
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.name}`,
-        department: userData.department,
-        position: userData.position,
-        salary: userData.salary,
-        status: 'active',
-        hireDate: new Date().toISOString().split('T')[0]
-      };
-      users.push(newUser);
-      saveCollection(DB_KEYS.USERS, users);
-      createAuditLog('CREATE_USER', `Novo usuário criado: ${newUser.name}`, 'WARNING');
-      createNotification('Novo Usuário', `${newUser.name} foi adicionado à equipe.`, 'success');
-      return newUser;
+    try {
+      const id = userData.id || auth.currentUser?.uid;
+      if (!id) throw new Error("User ID missing");
+
+      const userRef = doc(db, 'users', id);
+      const data = { ...userData };
+      delete data.password;
+      delete data.id;
+
+      await setDoc(userRef, data, { merge: true });
+      return { id, ...data } as User;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users');
+      throw error;
     }
   },
 
   async getOrders(): Promise<ServiceOrder[]> {
-    await delay(400);
-    const orders = getCollection<ServiceOrder>(DB_KEYS.ORDERS);
-    return orders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    try {
+      const q = query(collection(db, 'orders'), orderBy('date', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceOrder));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
+      return [];
+    }
   },
 
   async saveOrder(orderData: Partial<ServiceOrder>): Promise<ServiceOrder> {
-    await delay();
-    const orders = getCollection<ServiceOrder>(DB_KEYS.ORDERS);
-
-    if (orderData.id) {
-      const index = orders.findIndex(o => o.id === orderData.id);
-      if (index !== -1) {
-        const oldStatus = orders[index].status;
-        orders[index] = { ...orders[index], ...orderData };
-        saveCollection(DB_KEYS.ORDERS, orders);
-        
-        if (orderData.status && orderData.status !== oldStatus) {
-            createAuditLog('UPDATE_ORDER_STATUS', `OS #${orders[index].id} alterada para ${orderData.status}`);
-            if (orderData.status === OrderStatus.COMPLETED) {
-                createNotification('Ordem Concluída', `OS #${orders[index].id} foi finalizada.`, 'success');
-            }
-        } else {
-            createAuditLog('UPDATE_ORDER', `OS #${orders[index].id} atualizada`);
-        }
-        return orders[index];
+    try {
+      if (orderData.id) {
+        const orderRef = doc(db, 'orders', orderData.id);
+        const data = { ...orderData };
+        delete data.id;
+        await updateDoc(orderRef, data);
+        return { ...orderData } as ServiceOrder;
+      } else {
+        const docRef = await addDoc(collection(db, 'orders'), orderData);
+        return { id: docRef.id, ...orderData } as ServiceOrder;
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'orders');
+      throw error;
     }
-    
-    const newOrder: ServiceOrder = {
-        id: orderData.id || Date.now().toString(),
-        title: orderData.title || 'Nova Ordem',
-        customerName: orderData.customerName || 'Cliente',
-        address: orderData.address || '',
-        lat: orderData.lat || -23.5505,
-        lng: orderData.lng || -46.6333,
-        description: orderData.description || '',
-        status: orderData.status || OrderStatus.PENDING,
-        assignedToId: orderData.assignedToId || '',
-        date: orderData.date || new Date().toISOString(),
-        priority: orderData.priority || 'MEDIUM'
-    };
-    
-    orders.unshift(newOrder);
-    saveCollection(DB_KEYS.ORDERS, orders);
-    createAuditLog('CREATE_ORDER', `Nova OS criada: ${newOrder.title}`);
-    createNotification('Nova Demanda', `OS #${newOrder.id} criada para ${newOrder.customerName}`, 'info');
-    return newOrder;
   },
 
   async getTickets(): Promise<Ticket[]> {
-    await delay();
-    return getCollection<Ticket>(DB_KEYS.TICKETS).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    try {
+      const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'tickets');
+      return [];
+    }
   },
 
   async saveTicket(ticketData: Partial<Ticket>): Promise<Ticket> {
-    await delay();
-    const tickets = getCollection<Ticket>(DB_KEYS.TICKETS);
-
-    if (ticketData.id) {
-      const index = tickets.findIndex(t => t.id === ticketData.id);
-      if (index !== -1) {
-        tickets[index] = { ...tickets[index], ...ticketData };
-        saveCollection(DB_KEYS.TICKETS, tickets);
-        if (ticketData.status === TicketStatus.RESOLVED) {
-            createAuditLog('RESOLVE_TICKET', `Ticket #${tickets[index].id} resolvido`);
-        }
-        return tickets[index];
+    try {
+      if (ticketData.id) {
+        const ticketRef = doc(db, 'tickets', ticketData.id);
+        const data = { ...ticketData };
+        delete data.id;
+        await updateDoc(ticketRef, data);
+        return { ...ticketData } as Ticket;
+      } else {
+        const docRef = await addDoc(collection(db, 'tickets'), {
+          ...ticketData,
+          createdAt: new Date().toISOString(),
+          status: TicketStatus.OPEN,
+          messages: []
+        });
+        return { id: docRef.id, ...ticketData } as Ticket;
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'tickets');
+      throw error;
     }
+  },
 
-    const newTicket: Ticket = {
-      id: Date.now().toString(),
-      clientId: ticketData.clientId || '',
-      clientName: ticketData.clientName || 'Cliente',
-      subject: ticketData.subject || 'Assunto',
-      description: ticketData.description || '',
-      status: TicketStatus.OPEN,
-      createdAt: new Date().toISOString(),
-      messages: []
-    };
-    
-    tickets.unshift(newTicket);
-    saveCollection(DB_KEYS.TICKETS, tickets);
-    createAuditLog('CREATE_TICKET', `Novo ticket de ${newTicket.clientName}: ${newTicket.subject}`);
-    createNotification('Suporte', `Novo chamado aberto por ${newTicket.clientName}`, 'warning');
-    return newTicket;
+  async updateTicketStatus(ticketId: string, status: TicketStatus): Promise<void> {
+    try {
+      const ticketRef = doc(db, 'tickets', ticketId);
+      await updateDoc(ticketRef, { status });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticketId}`);
+    }
+  },
+
+  async replyToTicket(ticketId: string, message: string): Promise<void> {
+    try {
+      const ticketRef = doc(db, 'tickets', ticketId);
+      const ticketDoc = await getDoc(ticketRef);
+      if (ticketDoc.exists()) {
+        const messages = ticketDoc.data().messages || [];
+        messages.push({
+          id: Date.now().toString(),
+          sender: 'admin',
+          text: message,
+          timestamp: new Date().toISOString()
+        });
+        await updateDoc(ticketRef, { messages, status: TicketStatus.IN_PROGRESS });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticketId}`);
+    }
   },
 
   async getReports(): Promise<ServiceReport[]> {
-    await delay();
-    return getCollection<ServiceReport>(DB_KEYS.REPORTS);
+    try {
+      const snapshot = await getDocs(collection(db, 'reports'));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceReport));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'reports');
+      return [];
+    }
   },
 
   async saveReport(reportData: Partial<ServiceReport>): Promise<ServiceReport> {
-    await delay();
-    const reports = getCollection<ServiceReport>(DB_KEYS.REPORTS);
-    
-    const newReport: ServiceReport = {
-        id: Date.now().toString(),
-        orderId: reportData.orderId || '',
-        clientName: reportData.clientName || '',
-        technicianName: reportData.technicianName || '',
-        date: reportData.date || new Date().toISOString(),
-        startTime: reportData.startTime || '',
-        endTime: reportData.endTime || '',
-        address: reportData.address || '',
-        services: reportData.services || { gate: false, cctv: false, intercom: false, lock: false, preventive: false },
-        comments: reportData.comments || '',
-        photos: reportData.photos || [],
-        signatureName: reportData.signatureName || '',
-        partsUsed: reportData.partsUsed || []
-    };
-
-    // Consumir o estoque do técnico se houver peças usadas
-    if (newReport.partsUsed && newReport.partsUsed.length > 0) {
-        // Encontrar o técnico
-        const technicianId = (await this.getCurrentUser())?.id;
-        if(technicianId) {
-            const techStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
-            
-            newReport.partsUsed.forEach(part => {
-                const stockIndex = techStock.findIndex(ts => ts.technicianId === technicianId && ts.itemId === part.itemId);
-                if (stockIndex !== -1) {
-                    techStock[stockIndex].quantity = Math.max(0, techStock[stockIndex].quantity - part.quantity);
-                    techStock[stockIndex].lastUpdated = new Date().toISOString();
-                }
-            });
-            saveCollection(DB_KEYS.TECH_STOCK, techStock);
-            createAuditLog('USE_PART', `Técnico usou materiais na OS ${newReport.orderId}`);
-        }
+    try {
+      const docRef = await addDoc(collection(db, 'reports'), {
+        ...reportData,
+        date: new Date().toISOString()
+      });
+      return { id: docRef.id, ...reportData } as ServiceReport;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'reports');
+      throw error;
     }
-
-    reports.push(newReport);
-    saveCollection(DB_KEYS.REPORTS, reports);
-    createAuditLog('CREATE_REPORT', `Relatório gerado para OS ${newReport.orderId}`);
-    return newReport;
   },
 
   async getTimeRecords(): Promise<TimeRecord[]> {
-    await delay();
-    return getCollection<TimeRecord>(DB_KEYS.TIME);
+    try {
+      const snapshot = await getDocs(collection(db, 'timeRecords'));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRecord));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'timeRecords');
+      return [];
+    }
   },
 
   async saveTimeRecord(recordData: Partial<TimeRecord>): Promise<TimeRecord> {
-    await delay();
-    const records = getCollection<TimeRecord>(DB_KEYS.TIME);
-    
-    const newRecord: TimeRecord = {
-        id: Date.now().toString(),
-        employeeId: recordData.employeeId || '',
-        employeeName: recordData.employeeName || '',
-        type: recordData.type || 'CLOCK_IN',
-        timestamp: recordData.timestamp || new Date().toISOString(),
-        location: recordData.location || 'GPS Location'
-    };
-
-    records.push(newRecord);
-    saveCollection(DB_KEYS.TIME, records);
-    createAuditLog('TIME_RECORD', `${newRecord.employeeName} registrou ${newRecord.type}`);
-    return newRecord;
-  },
-
-  async getAuditLogs(): Promise<AuditLog[]> {
-      await delay(300);
-      return getCollection<AuditLog>(DB_KEYS.AUDIT);
-  },
-
-  async getNotifications(): Promise<Notification[]> {
-      return getCollection<Notification>(DB_KEYS.NOTIFS);
-  },
-
-  async markNotificationRead(id: string): Promise<void> {
-      const notifs = getCollection<Notification>(DB_KEYS.NOTIFS);
-      const index = notifs.findIndex(n => n.id === id);
-      if (index !== -1) {
-          notifs[index].read = true;
-          saveCollection(DB_KEYS.NOTIFS, notifs);
-      }
-  },
-
-  async getSubscription(): Promise<Subscription> {
-      await delay(400);
-      const sub = localStorage.getItem(DB_KEYS.SUB);
-      return sub ? JSON.parse(sub) : INITIAL_SUBSCRIPTION;
-  },
-
-  async getInvoices(): Promise<Invoice[]> {
-      await delay(400);
-      return getCollection<Invoice>(DB_KEYS.INVOICES);
+    try {
+      const docRef = await addDoc(collection(db, 'timeRecords'), {
+        ...recordData,
+        timestamp: new Date().toISOString()
+      });
+      return { id: docRef.id, ...recordData } as TimeRecord;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'timeRecords');
+      throw error;
+    }
   },
 
   async getInventory(): Promise<InventoryItem[]> {
-      await delay(400);
-      return getCollection<InventoryItem>(DB_KEYS.INVENTORY);
+    try {
+      const snapshot = await getDocs(collection(db, 'inventory'));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'inventory');
+      return [];
+    }
   },
 
   async saveInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
-      await delay();
-      const items = getCollection<InventoryItem>(DB_KEYS.INVENTORY);
-      
+    try {
       if (itemData.id) {
-          const index = items.findIndex(i => i.id === itemData.id);
-          if (index !== -1) {
-              items[index] = { ...items[index], ...itemData, lastUpdated: new Date().toISOString() };
-              saveCollection(DB_KEYS.INVENTORY, items);
-              createAuditLog('UPDATE_INVENTORY', `Item atualizado: ${items[index].name}`);
-              return items[index];
-          }
-      }
-
-      const newItem: InventoryItem = {
-          id: Date.now().toString(),
-          name: itemData.name || 'Novo Item',
-          sku: itemData.sku || 'SKU-000',
-          category: itemData.category || 'Geral',
-          quantity: itemData.quantity || 0,
-          minQuantity: itemData.minQuantity || 0,
-          price: itemData.price || 0,
-          unit: itemData.unit || 'un',
+        const itemRef = doc(db, 'inventory', itemData.id);
+        const data = { ...itemData, lastUpdated: new Date().toISOString() };
+        delete data.id;
+        await updateDoc(itemRef, data);
+        return { ...itemData } as InventoryItem;
+      } else {
+        const docRef = await addDoc(collection(db, 'inventory'), {
+          ...itemData,
           lastUpdated: new Date().toISOString()
-      };
-      items.push(newItem);
-      saveCollection(DB_KEYS.INVENTORY, items);
-      createAuditLog('ADD_INVENTORY', `Item adicionado: ${newItem.name}`);
-      return newItem;
+        });
+        return { id: docRef.id, ...itemData } as InventoryItem;
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'inventory');
+      throw error;
+    }
   },
 
   async getTechnicianStock(technicianId: string): Promise<TechnicianStockItem[]> {
-      await delay(300);
-      const allStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
-      return allStock.filter(item => item.technicianId === technicianId);
+    try {
+      const q = query(collection(db, 'technicianStock'), where('technicianId', '==', technicianId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TechnicianStockItem));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'technicianStock');
+      return [];
+    }
   },
 
   async transferStockToTechnician(itemId: string, technicianId: string, quantity: number): Promise<void> {
-      await delay();
-      const inventory = getCollection<InventoryItem>(DB_KEYS.INVENTORY);
-      const techStock = getCollection<TechnicianStockItem>(DB_KEYS.TECH_STOCK);
-      const users = getCollection<User>(DB_KEYS.USERS);
-
-      const invIndex = inventory.findIndex(i => i.id === itemId);
-      if (invIndex === -1) throw new Error("Item não encontrado");
+    try {
+      // 1. Update main inventory
+      const itemRef = doc(db, 'inventory', itemId);
+      const itemDoc = await getDoc(itemRef);
+      if (!itemDoc.exists()) throw new Error("Item not found");
       
-      if (inventory[invIndex].quantity < quantity) throw new Error("Estoque insuficiente");
-
-      const technician = users.find(u => u.id === technicianId);
-      if (!technician) throw new Error("Técnico não encontrado");
-
-      // Decrement main inventory
-      inventory[invIndex].quantity -= quantity;
+      const currentQty = itemDoc.data().quantity || 0;
+      if (currentQty < quantity) throw new Error("Insufficient stock");
       
-      // Increment or Create tech stock
-      const existingTechItemIndex = techStock.findIndex(ts => ts.technicianId === technicianId && ts.itemId === itemId);
+      await updateDoc(itemRef, { quantity: currentQty - quantity });
+
+      // 2. Update technician stock
+      const q = query(collection(db, 'technicianStock'), where('technicianId', '==', technicianId), where('itemId', '==', itemId));
+      const snapshot = await getDocs(q);
       
-      if (existingTechItemIndex !== -1) {
-          techStock[existingTechItemIndex].quantity += quantity;
-          techStock[existingTechItemIndex].lastUpdated = new Date().toISOString();
+      if (!snapshot.empty) {
+        const stockDoc = snapshot.docs[0];
+        await updateDoc(doc(db, 'technicianStock', stockDoc.id), {
+          quantity: stockDoc.data().quantity + quantity,
+          lastUpdated: new Date().toISOString()
+        });
       } else {
-          techStock.push({
-              id: Date.now().toString(),
-              technicianId,
-              itemId,
-              itemName: inventory[invIndex].name,
-              quantity,
-              lastUpdated: new Date().toISOString()
-          });
+        await addDoc(collection(db, 'technicianStock'), {
+          technicianId,
+          itemId,
+          itemName: itemDoc.data().name,
+          quantity,
+          lastUpdated: new Date().toISOString()
+        });
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'technicianStock');
+    }
+  },
 
-      saveCollection(DB_KEYS.INVENTORY, inventory);
-      saveCollection(DB_KEYS.TECH_STOCK, techStock);
-      
-      createAuditLog('TRANSFER_STOCK', `Transferido ${quantity}x ${inventory[invIndex].name} para ${technician.name}`);
+  async getAuditLogs(): Promise<AuditLog[]> {
+    try {
+      const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'auditLogs');
+      return [];
+    }
+  },
+
+  async getNotifications(): Promise<Notification[]> {
+    try {
+      const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'notifications');
+      return [];
+    }
+  },
+
+  async markNotificationRead(id: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `notifications/${id}`);
+    }
+  },
+
+  async getSubscription(): Promise<Subscription | null> {
+    try {
+      const snapshot = await getDocs(collection(db, 'subscription'));
+      if (!snapshot.empty) {
+        return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any;
+      }
+      return {
+        plan: 'PROFESSIONAL',
+        status: 'ACTIVE',
+        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        usersLimit: 50,
+        storageLimitGB: 100,
+        currentUsers: 12,
+        currentStorageGB: 45
+      } as Subscription;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, 'subscription');
+      return null;
+    }
+  },
+
+  async getInvoices(): Promise<Invoice[]> {
+    try {
+      const snapshot = await getDocs(collection(db, 'invoices'));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'invoices');
+      return [];
+    }
+  },
+
+  // Real-time listeners
+  subscribeToOrders(callback: (orders: ServiceOrder[]) => void) {
+    const q = query(collection(db, 'orders'), orderBy('date', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceOrder)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
+  },
+
+  subscribeToTickets(callback: (tickets: Ticket[]) => void) {
+    const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'tickets'));
+  },
+
+  async testConnection() {
+    try {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    } catch (error) {
+      if(error instanceof Error && error.message.includes('the client is offline')) {
+        console.error("Please check your Firebase configuration.");
+      }
+    }
   }
 };

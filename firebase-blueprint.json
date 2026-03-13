@@ -1,0 +1,139 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (Admin, Employee, or Client)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "EMPLOYEE", "CLIENT"] },
+        "email": { "type": "string", "format": "email" },
+        "avatar": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "idle"] },
+        "department": { "type": "string" },
+        "position": { "type": "string" },
+        "salary": { "type": "number" },
+        "hireDate": { "type": "string", "format": "date" }
+      },
+      "required": ["name", "role", "email"]
+    },
+    "ServiceOrder": {
+      "title": "Service Order",
+      "description": "Work order for a technician",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "customerName": { "type": "string" },
+        "address": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pendente", "Em Rota", "Concluído", "Cancelado"] },
+        "assignedToId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] }
+      },
+      "required": ["title", "customerName", "status", "date"]
+    },
+    "Ticket": {
+      "title": "Support Ticket",
+      "description": "Customer support request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Aberto", "Em Análise", "Resolvido"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "messages": { "type": "array", "items": { "$ref": "ChatMessage" } }
+      },
+      "required": ["clientId", "subject", "status", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message within a ticket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "bot", "admin"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ServiceReport": {
+      "title": "Service Report",
+      "description": "Technical report after service completion",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "technicianName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "address": { "type": "string" },
+        "services": { "type": "object" },
+        "comments": { "type": "string" },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "signatureName": { "type": "string" },
+        "partsUsed": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "TimeRecord": {
+      "title": "Time Record",
+      "description": "Clock in/out records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "type": { "type": "string", "enum": ["CLOCK_IN", "CLOCK_OUT"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" }
+      }
+    },
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Item in the main warehouse",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "minQuantity": { "type": "number" },
+        "price": { "type": "number" },
+        "unit": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "System activity log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "actorName": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "severity": { "type": "string", "enum": ["INFO", "WARNING", "CRITICAL"] }
+      }
+    }
+  },
+  "firestore": {
+    "/users": { "schema": "User", "description": "System users" },
+    "/orders": { "schema": "ServiceOrder", "description": "Service orders" },
+    "/tickets": { "schema": "Ticket", "description": "Support tickets" },
+    "/reports": { "schema": "ServiceReport", "description": "Technical reports" },
+    "/timeRecords": { "schema": "TimeRecord", "description": "Employee time tracking" },
+    "/inventory": { "schema": "InventoryItem", "description": "Main inventory" },
+    "/auditLogs": { "schema": "AuditLog", "description": "System audit logs" }
+  }
+}

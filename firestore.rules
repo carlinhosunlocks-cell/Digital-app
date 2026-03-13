@@ -1,0 +1,137 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Fields: name (string), role (string), email (string), avatar (string), status (string), department (string), position (string), salary (number), hireDate (string)
+    //
+    // Collection: orders
+    // Fields: title (string), customerName (string), address (string), lat (number), lng (number), description (string), status (string), assignedToId (string), date (string), priority (string)
+    //
+    // Collection: tickets
+    // Fields: clientId (string), clientName (string), subject (string), description (string), status (string), createdAt (string), messages (list)
+    //
+    // Collection: reports
+    // Fields: orderId (string), clientName (string), technicianName (string), date (string), startTime (string), endTime (string), address (string), services (map), comments (string), photos (list), signatureName (string), partsUsed (list)
+    //
+    // Collection: timeRecords
+    // Fields: employeeId (string), employeeName (string), type (string), timestamp (string), location (string)
+    //
+    // Collection: inventory
+    // Fields: name (string), sku (string), category (string), quantity (number), minQuantity (number), price (number), unit (string), lastUpdated (string)
+    //
+    // Collection: auditLogs
+    // Fields: action (string), actorName (string), details (string), timestamp (string), severity (string)
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
+          (request.auth.token.email == "amandamartins8901@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isAdmin() || isOwner(userId));
+      allow update: if isAuthenticated() && (isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role));
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.assignedToId);
+      allow delete: if isAdmin();
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'EMPLOYEE');
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /timeRecords/{recordId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.employeeId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /technicianStock/{stockId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.technicianId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /subscription/{subId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /invoices/{invId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}

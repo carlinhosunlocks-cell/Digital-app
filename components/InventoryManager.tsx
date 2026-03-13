@@ -57,6 +57,9 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, employee
       setIsTransferModalOpen(false);
   };
 
+  // Helper to find currently selected item for transfer
+  const selectedTransferItem = inventory.find(i => i.id === transferData.itemId);
+
   return (
     <div className="space-y-6 h-full flex flex-col">
        <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -196,7 +199,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, employee
           </div>
        )}
 
-       {isTransferModalOpen && (
+       {isTransferModalOpen && selectedTransferItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
              <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
                 <h3 className="text-xl font-bold mb-1 text-slate-800">Entregar Material</h3>
@@ -205,8 +208,8 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, employee
                 <form onSubmit={handleTransferSubmit} className="space-y-4">
                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
                         <p className="text-xs font-bold text-slate-400 uppercase">Item Selecionado</p>
-                        <p className="font-bold text-slate-800">{inventory.find(i => i.id === transferData.itemId)?.name}</p>
-                        <p className="text-xs text-slate-500">Disponível: {inventory.find(i => i.id === transferData.itemId)?.quantity}</p>
+                        <p className="font-bold text-slate-800">{selectedTransferItem.name}</p>
+                        <p className="text-xs text-slate-500">Disponível em Estoque: <span className="font-bold text-slate-800">{selectedTransferItem.quantity}</span></p>
                    </div>
 
                    <div>
@@ -230,10 +233,11 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, employee
                             <input 
                                 type="number" 
                                 min="1"
-                                max={inventory.find(i => i.id === transferData.itemId)?.quantity}
+                                max={selectedTransferItem.quantity}
+                                required
                                 className="w-full bg-white border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 font-bold text-lg"
                                 value={transferData.quantity}
-                                onChange={e => setTransferData({...transferData, quantity: parseInt(e.target.value)})}
+                                onChange={e => setTransferData({...transferData, quantity: Math.min(parseInt(e.target.value) || 0, selectedTransferItem.quantity)})}
                             />
                         </div>
                    </div>

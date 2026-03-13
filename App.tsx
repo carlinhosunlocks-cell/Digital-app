@@ -1,272 +1,414 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  LogOut, 
+  Lock, 
+  Mail, 
+  Loader2, 
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  ArrowRight
+} from 'lucide-react';
+import { auth } from './firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { apiService } from './services/parseService';
+import { User, ServiceOrder, Ticket, TimeRecord, ServiceReport, OrderStatus, TicketStatus } from './types';
 import { AdminView } from './views/AdminView';
 import { EmployeeView } from './views/EmployeeView';
 import { ClientView } from './views/ClientView';
-import { apiService } from './services/parseService';
-import { Role, User, ServiceOrder, Ticket, OrderStatus, ServiceReport, TicketStatus, TimeRecord } from './types';
-import { ArrowRight, Lock, Mail, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
-const ToastContainer: React.FC<{ toasts: {id: string, message: string, type: 'success' | 'error'}[] }> = ({ toasts }) => (
-  <div className="fixed top-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
-    {toasts.map(toast => (
-      <div key={toast.id} className={`pointer-events-auto flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl animate-in slide-in-from-right-10 fade-in duration-500 ${
-        toast.type === 'success' 
-        ? 'bg-white/80 border-green-200/50 text-green-700' 
-        : 'bg-white/80 border-red-200/50 text-red-700'
-      }`}>
-        <div className={`p-1 rounded-full ${toast.type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}>
-          {toast.type === 'success' ? <CheckCircle size={16} /> : <XCircle size={16} />}
+// --- Error Boundary Component ---
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = "Ocorreu um erro inesperado.";
+      try {
+        const parsed = JSON.parse(this.state.error.message);
+        if (parsed.error) errorMessage = `Erro de Permissão: ${parsed.operationType} em ${parsed.path}`;
+      } catch (e) {
+        errorMessage = this.state.error.message || errorMessage;
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-red-100 max-w-md w-full text-center">
+            <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Ops! Algo deu errado</h2>
+            <p className="text-slate-600 mb-6">{errorMessage}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition"
+            >
+              Recarregar Aplicativo
+            </button>
+          </div>
         </div>
-        <span className="text-sm font-semibold">{toast.message}</span>
-      </div>
-    ))}
-  </div>
-);
+      );
+    }
 
-const LoginScreen: React.FC<{ onLogin: (email: string, pass: string) => void; error: string | null; loading: boolean }> = ({ onLogin, error, loading }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+    return this.props.children;
+  }
+}
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onLogin(email, password);
-  };
+// --- Toast Component ---
+const Toast: React.FC<{ message: string; type: 'success' | 'error'; onClose: () => void }> = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 relative overflow-hidden font-sans">
-      <div className="absolute inset-0 z-0">
-         <div className="absolute top-[-20%] left-[-10%] w-[80%] h-[80%] bg-blue-600/20 rounded-full blur-[150px] animate-pulse"></div>
-         <div className="absolute bottom-[-20%] right-[-10%] w-[80%] h-[80%] bg-indigo-600/20 rounded-full blur-[150px] animate-pulse delay-700"></div>
-      </div>
-
-      <div className="w-full max-w-[400px] z-10 px-6">
-        <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl p-8 flex flex-col items-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[1.5rem] flex items-center justify-center mb-8 shadow-lg">
-            <span className="text-4xl font-bold text-white">D</span>
-          </div>
-          
-          <h2 className="text-2xl font-semibold text-white mb-1">Digital Equipamentos</h2>
-          <p className="text-white/50 text-sm mb-8 text-center">Login Unificado • Vercel Edition</p>
-
-          <div className="bg-white/5 p-3 rounded-xl w-full mb-6 text-[10px] text-white/50">
-             <p className="font-bold mb-1">Acesso (Demo Persistente):</p>
-             <p>Admin: admin@admin.com / 123</p>
-             <p>Técnico: carlos@digital.com / 123</p>
-             <p>Cliente: cliente@tech.com / 123</p>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-3 bg-red-500/20 text-red-200 rounded-xl text-xs flex items-center gap-2 border border-red-500/30 w-full justify-center">
-               <AlertCircle size={14} /> {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="w-full space-y-4">
-            <div className="group relative">
-               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40"><Mail size={18} /></div>
-               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-white/30 transition-all text-sm" placeholder="Seu e-mail" />
-            </div>
-            <div className="group relative">
-               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40"><Lock size={18} /></div>
-               <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-white/30 transition-all text-sm" placeholder="Sua senha" />
-            </div>
-            <button type="submit" disabled={loading} className="w-full py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-50">
-               {loading ? <Loader2 className="animate-spin" size={20} /> : <>Entrar no Sistema <ArrowRight size={18} /></>}
-            </button>
-          </form>
-        </div>
-      </div>
+    <div className={`fixed bottom-8 right-8 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-right duration-300 ${
+      type === 'success' ? 'bg-white border-green-100 text-green-800' : 'bg-white border-red-100 text-red-800'
+    }`}>
+      {type === 'success' ? <CheckCircle2 className="text-green-500" size={20} /> : <AlertCircle className="text-red-500" size={20} />}
+      <p className="text-sm font-bold">{message}</p>
     </div>
   );
 };
 
-function App() {
+const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [toasts, setToasts] = useState<{id: string, message: string, type: 'success' | 'error'}[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
 
-  const [users, setUsers] = useState<User[]>([]);
+  // Data States
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [reports, setReports] = useState<ServiceReport[]>([]);
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
+  const [reports, setReports] = useState<ServiceReport[]>([]);
 
   const addToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    const id = Date.now().toString();
+    const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
 
+  const removeToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        try {
+          const userData = await apiService.getCurrentUser(firebaseUser.uid);
+          if (userData) {
+            setCurrentUser(userData);
+          } else {
+            await auth.signOut();
+            setCurrentUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setCurrentUser(null);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setInitialLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Subscriptions
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsubOrders = apiService.subscribeToOrders((updatedOrders) => {
+      setOrders(updatedOrders);
+    });
+
+    const unsubTickets = apiService.subscribeToTickets((updatedTickets) => {
+      setTickets(updatedTickets);
+    });
+
+    return () => {
+      unsubOrders();
+      unsubTickets();
+    };
+  }, [currentUser]);
+
+  // Load Static Data
   const loadAllData = useCallback(async () => {
+    if (!currentUser) return;
+    setDataLoading(true);
     try {
-      const [ord, tkt, emp, rep, rec] = await Promise.all([
-        apiService.getOrders(),
-        apiService.getTickets(),
+      const [usersData, reportsData, timeData] = await Promise.all([
         apiService.getUsers(),
         apiService.getReports(),
         apiService.getTimeRecords()
       ]);
-      setOrders(ord);
-      setTickets(tkt);
-      setUsers(emp);
-      setReports(rep);
-      setTimeRecords(rec);
-    } catch (e) {
-      console.error("Erro ao carregar dados:", e);
+      setEmployees(usersData);
+      setReports(reportsData);
+      setTimeRecords(timeData);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      addToast("Erro ao carregar dados do servidor", "error");
+    } finally {
+      setDataLoading(false);
     }
-  }, []);
+  }, [currentUser, addToast]);
 
   useEffect(() => {
-    async function init() {
-      try {
-        const user = await apiService.getCurrentUser();
-        if (user) {
-          setCurrentUser(user);
-          await loadAllData();
-        }
-      } catch (e) {
-        console.error("Erro na sessão:", e);
-      } finally {
-        setInitialLoading(false);
-      }
-    }
-    init();
+    loadAllData();
   }, [loadAllData]);
 
-  const handleLoginAttempt = async (email: string, pass: string) => {
-    setLoading(true);
-    setLoginError(null);
+  // Handlers
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = (e.target as any).email.value;
+    const password = (e.target as any).password.value;
+    
     try {
-      const user = await apiService.login(email, pass);
-      setCurrentUser(user);
-      await loadAllData();
-      addToast(`Bem-vindo, ${user.name}!`);
-    } catch (e: any) {
-      setLoginError("Credenciais inválidas ou erro de sistema.");
+      setInitialLoading(true);
+      await apiService.login(email, password);
+      addToast("Bem-vindo de volta!");
+    } catch (error: any) {
+      addToast(error.message || "Falha no login", "error");
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   };
 
-  const handleSaveUser = async (userData: Partial<User> & { password?: string }) => {
+  const handleLogout = async () => {
     try {
-      await apiService.saveUser(userData);
-      await loadAllData();
-      addToast(userData.id ? "Perfil atualizado!" : "Novo usuário cadastrado!");
-    } catch (e: any) {
-      addToast("Erro ao salvar usuário.", "error");
+      await apiService.logout();
+      setCurrentUser(null);
+      addToast("Sessão encerrada");
+    } catch (error) {
+      addToast("Erro ao sair", "error");
     }
   };
 
   const handleCreateOrder = async (order: ServiceOrder) => {
     try {
       await apiService.saveOrder(order);
+      addToast("Ordem de serviço criada!");
+    } catch (error) {
+      addToast("Erro ao criar OS", "error");
+    }
+  };
+
+  const handleUpdateTicketStatus = async (ticketId: string, status: TicketStatus) => {
+    try {
+      await apiService.updateTicketStatus(ticketId, status);
+      addToast("Status do ticket atualizado");
+    } catch (error) {
+      addToast("Erro ao atualizar ticket", "error");
+    }
+  };
+
+  const handleReplyTicket = async (ticketId: string, message: string) => {
+    try {
+      await apiService.replyToTicket(ticketId, message);
+      addToast("Resposta enviada");
+    } catch (error) {
+      addToast("Erro ao enviar resposta", "error");
+    }
+  };
+
+  const handleSaveEmployee = async (user: Partial<User> & { password?: string }) => {
+    try {
+      await apiService.saveUser(user);
       await loadAllData();
-      addToast("Ordem de serviço gerada!");
-    } catch (e) {
-      addToast("Erro ao criar ordem.", "error");
+      addToast("Usuário salvo com sucesso");
+    } catch (error) {
+      addToast("Erro ao salvar usuário", "error");
     }
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus) => {
     try {
       await apiService.saveOrder({ id: orderId, status });
+      addToast("Status da OS atualizado");
+    } catch (error) {
+      addToast("Erro ao atualizar OS", "error");
+    }
+  };
+
+  const handleClockAction = async (type: 'CLOCK_IN' | 'CLOCK_OUT') => {
+    try {
+      await apiService.saveTimeRecord({
+        employeeId: currentUser?.id || '',
+        type,
+        timestamp: new Date().toISOString(),
+        location: 'Localização via GPS'
+      });
       await loadAllData();
-      addToast("Status atualizado!");
-    } catch (e) {
-      addToast("Erro na atualização.", "error");
+      addToast(type === 'CLOCK_IN' ? "Entrada registrada" : "Saída registrada");
+    } catch (error) {
+      addToast("Erro ao registrar ponto", "error");
     }
   };
 
   const handleCreateReport = async (report: ServiceReport) => {
     try {
       await apiService.saveReport(report);
-      await apiService.saveOrder({ id: report.orderId, status: OrderStatus.COMPLETED });
       await loadAllData();
-      addToast("Relatório técnico finalizado!");
-    } catch (e) {
-      addToast("Erro ao salvar relatório.", "error");
+      addToast("Relatório técnico enviado!");
+    } catch (error) {
+      addToast("Erro ao enviar relatório", "error");
     }
   };
 
-  const handleClockAction = async (type: 'CLOCK_IN' | 'CLOCK_OUT') => {
-    if (!currentUser) return;
+  const handleCreateTicket = async (ticket: Omit<Ticket, 'id' | 'createdAt' | 'messages'>) => {
     try {
-      await apiService.saveTimeRecord({
-        employeeId: currentUser.id,
-        employeeName: currentUser.name,
-        type,
-        timestamp: new Date().toISOString(),
-        location: 'Localização GPS'
-      });
-      await loadAllData();
-      addToast(type === 'CLOCK_IN' ? "Turno iniciado!" : "Turno encerrado.");
-    } catch (e) {
-      addToast("Erro ao registrar ponto.", "error");
-    }
-  };
-
-  const handleReplyTicket = async (ticketId: string, message: string) => {
-    try {
-      // Simulação: em um app real, adicionaríamos ao array de mensagens
-      addToast("Resposta enviada!");
-      await loadAllData();
-    } catch (e) {
-      addToast("Erro ao responder.", "error");
+      await apiService.saveTicket(ticket as any);
+      addToast("Ticket aberto com sucesso!");
+    } catch (error) {
+      addToast("Erro ao abrir ticket", "error");
     }
   };
 
   if (initialLoading) {
-    return <div className="h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-white" size={48} /></div>;
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
+        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+        <p className="text-slate-400 font-bold tracking-widest uppercase text-xs">Digital Equipamentos</p>
+        <p className="text-[10px] text-slate-600 mt-2">Carregando plataforma segura...</p>
+      </div>
+    );
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLoginAttempt} error={loginError} loading={loading} />;
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+          
+          <div className="text-center mb-10">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-blue-200 mb-6">D</div>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Digital Equipamentos</h1>
+            <p className="text-slate-400 font-medium mt-2">Acesse sua conta corporativa</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Corporativo</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  name="email"
+                  type="email" 
+                  required 
+                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition font-medium"
+                  placeholder="seu@email.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha de Acesso</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  name="password"
+                  type="password" 
+                  required 
+                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition font-medium"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[0.99] transition-all flex justify-center items-center gap-2 uppercase text-xs tracking-widest"
+            >
+              Entrar no Sistema
+            </button>
+          </form>
+
+          <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+             <p className="text-[10px] text-slate-400 font-bold uppercase text-center mb-2">Acesso Rápido (Demo - Senha: 123456)</p>
+             <div className="flex justify-center gap-4 text-[10px] font-black text-blue-600">
+                <span>admin@admin.com</span>
+                <span>tech@tech.com</span>
+                <span>cliente@cliente.com</span>
+             </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="font-sans antialiased text-slate-900 h-screen overflow-hidden bg-slate-50">
-      <ToastContainer toasts={toasts} />
-      
-      {currentUser.role === 'ADMIN' && (
-        <AdminView 
-          orders={orders} 
-          employees={users} 
-          timeRecords={timeRecords} 
-          tickets={tickets}
-          hrRequests={[]} 
-          reports={reports}
-          onCreateOrder={handleCreateOrder}
-          onUpdateTicketStatus={async (id, s) => { await apiService.saveTicket({id, status: s}); loadAllData(); }}
-          onReplyTicket={handleReplyTicket}
-          onSaveEmployee={handleSaveUser}
-        />
-      )}
+    <ErrorBoundary>
+      <div className="relative min-h-screen">
+        {currentUser.role === 'ADMIN' && (
+          <AdminView 
+            orders={orders}
+            employees={employees}
+            timeRecords={timeRecords}
+            tickets={tickets}
+            hrRequests={[]}
+            reports={reports}
+            onCreateOrder={handleCreateOrder}
+            onUpdateTicketStatus={handleUpdateTicketStatus}
+            onReplyTicket={handleReplyTicket}
+            onSaveEmployee={handleSaveEmployee}
+            onRefresh={loadAllData}
+            addToast={addToast}
+          />
+        )}
 
-      {currentUser.role === 'EMPLOYEE' && (
-        <EmployeeView 
-          currentUser={currentUser}
-          orders={orders}
-          timeRecords={timeRecords}
-          onUpdateOrderStatus={handleUpdateOrderStatus}
-          onClockAction={handleClockAction}
-          onCreateReport={handleCreateReport}
-        />
-      )}
+        {currentUser.role === 'EMPLOYEE' && (
+          <EmployeeView 
+            currentUser={currentUser}
+            orders={orders}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onClockAction={handleClockAction}
+            timeRecords={timeRecords}
+            onCreateReport={handleCreateReport}
+          />
+        )}
 
-      {currentUser.role === 'CLIENT' && (
-        <ClientView 
-          currentUser={currentUser}
-          tickets={tickets}
-          reports={reports} 
-          onCreateTicket={async (t) => { await apiService.saveTicket(t); loadAllData(); }}
-        />
-      )}
-    </div>
+        {currentUser.role === 'CLIENT' && (
+          <ClientView 
+            currentUser={currentUser}
+            tickets={tickets}
+            reports={reports}
+            onCreateTicket={handleCreateTicket}
+          />
+        )}
+
+        {/* Global Logout Button */}
+        <button 
+          onClick={handleLogout}
+          className="fixed top-6 right-6 z-[60] p-2 bg-white/80 backdrop-blur-md border border-slate-200 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 transition shadow-sm"
+          title="Sair"
+        >
+          <LogOut size={20} />
+        </button>
+
+        {toasts.map(toast => (
+          <Toast 
+            key={toast.id} 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => removeToast(toast.id)} 
+          />
+        ))}
+      </div>
+    </ErrorBoundary>
   );
-}
+};
 
 export default App;
