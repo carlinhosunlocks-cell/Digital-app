@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus, Bell } from 'lucide-react';
-import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem, Notification } from '../types';
+import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus, Bell, Briefcase } from 'lucide-react';
+import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem, Notification, HRRequest, HRRequestStatus } from '../types';
 import MapVisualizer from '../components/MapVisualizer';
 import { apiService } from '../services/parseService';
 
@@ -12,11 +12,13 @@ interface EmployeeViewProps {
   onClockAction: (type: 'CLOCK_IN' | 'CLOCK_OUT') => void;
   timeRecords: TimeRecord[];
   notifications: Notification[];
+  hrRequests: HRRequest[];
   onCreateReport: (report: ServiceReport) => void;
+  onCreateHRRequest: (request: Partial<HRRequest>) => void;
 }
 
-export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, onCreateReport }) => {
-  const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock'>('route');
+export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, hrRequests, onCreateReport, onCreateHRRequest }) => {
+  const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock' | 'hr'>('route');
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<ServiceOrder | null>(null);
   const [myStock, setMyStock] = useState<TechnicianStockItem[]>([]);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
@@ -49,6 +51,16 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
 
   const [usedParts, setUsedParts] = useState<{itemId: string, itemName: string, quantity: number}[]>([]);
   const [partSelection, setPartSelection] = useState({ itemId: '', quantity: 1 });
+  
+  // HR Form State
+  const [hrForm, setHrForm] = useState({
+    type: 'VACATION' as 'VACATION' | 'SICK_LEAVE' | 'REIMBURSEMENT' | 'OTHER',
+    startDate: '',
+    endDate: '',
+    reason: '',
+    amount: 0
+  });
+  const [isHRModalOpen, setIsHRModalOpen] = useState(false);
 
   const myOrders = orders.filter(o => o.assignedToId === currentUser.id);
   const todaysRecords = timeRecords.filter(r => r.employeeId === currentUser.id && new Date(r.timestamp).toDateString() === new Date().toDateString());
@@ -81,6 +93,24 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
       const newParts = [...usedParts];
       newParts.splice(index, 1);
       setUsedParts(newParts);
+  };
+
+  const handleHRSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onCreateHRRequest({
+        ...hrForm,
+        employeeId: currentUser.id,
+        employeeName: currentUser.name,
+        status: HRRequestStatus.PENDING
+    });
+    setIsHRModalOpen(false);
+    setHrForm({
+        type: 'VACATION',
+        startDate: '',
+        endDate: '',
+        reason: '',
+        amount: 0
+    });
   };
 
   const handleSubmitReport = () => {
@@ -342,6 +372,131 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
           </div>
         )}
 
+        {/* HR TAB */}
+        {activeTab === 'hr' && (
+            <div className="space-y-6 animate-in fade-in duration-300 h-full overflow-auto no-scrollbar pb-24">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-black text-white tracking-tight">Recursos Humanos</h2>
+                    <button 
+                        onClick={() => setIsHRModalOpen(true)}
+                        className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg shadow-blue-900/50"
+                    >
+                        <Plus size={20} />
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest pl-1">Minhas Solicitações</p>
+                    {hrRequests.map(request => (
+                        <div key={request.id} className="bg-white/5 border border-white/10 p-5 rounded-3xl backdrop-blur-md">
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 className="font-bold text-white">{request.type === 'VACATION' ? 'Férias' : request.type === 'SICK_LEAVE' ? 'Atestado Médico' : request.type === 'REIMBURSEMENT' ? 'Reembolso' : 'Outro'}</h4>
+                                    <p className="text-[10px] text-white/40 uppercase font-medium tracking-tight">
+                                        {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase ${
+                                    request.status === HRRequestStatus.PENDING ? 'bg-amber-500/20 text-amber-500' :
+                                    request.status === HRRequestStatus.APPROVED ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                                }`}>
+                                    {request.status === HRRequestStatus.PENDING ? 'Pendente' : request.status === HRRequestStatus.APPROVED ? 'Aprovado' : 'Rejeitado'}
+                                </span>
+                            </div>
+                            {request.reason && <p className="text-xs text-white/60 italic mb-2">"{request.reason}"</p>}
+                            {request.amount > 0 && <p className="text-sm font-bold text-blue-400">R$ {request.amount.toFixed(2)}</p>}
+                        </div>
+                    ))}
+                    {hrRequests.length === 0 && (
+                        <div className="text-center py-12 border border-dashed border-white/10 rounded-3xl">
+                            <Briefcase size={32} className="text-white/10 mx-auto mb-3" />
+                            <p className="text-white/30 text-sm italic">Nenhuma solicitação enviada.</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* HR Request Modal */}
+                {isHRModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-white/10 p-8 animate-in slide-in-from-bottom duration-300">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-black text-white">Nova Solicitação</h3>
+                                <button onClick={() => setIsHRModalOpen(false)} className="p-2 bg-white/5 rounded-full text-white/50"><X size={20}/></button>
+                            </div>
+
+                            <form onSubmit={handleHRSubmit} className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Tipo de Pedido</label>
+                                    <select 
+                                        value={hrForm.type}
+                                        onChange={e => setHrForm({...hrForm, type: e.target.value as any})}
+                                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-bold outline-none focus:border-blue-500"
+                                    >
+                                        <option value="VACATION">Férias</option>
+                                        <option value="SICK_LEAVE">Atestado / Folga</option>
+                                        <option value="REIMBURSEMENT">Reembolso de Despesas</option>
+                                        <option value="OTHER">Outros Assuntos</option>
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Data Início</label>
+                                        <input 
+                                            type="date" 
+                                            required
+                                            value={hrForm.startDate}
+                                            onChange={e => setHrForm({...hrForm, startDate: e.target.value})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Data Fim</label>
+                                        <input 
+                                            type="date" 
+                                            required
+                                            value={hrForm.endDate}
+                                            onChange={e => setHrForm({...hrForm, endDate: e.target.value})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {hrForm.type === 'REIMBURSEMENT' && (
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Valor do Reembolso</label>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={hrForm.amount}
+                                            onChange={e => setHrForm({...hrForm, amount: Number(e.target.value)})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none"
+                                            placeholder="0,00"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Justificativa / Detalhes</label>
+                                    <textarea 
+                                        rows={3}
+                                        value={hrForm.reason}
+                                        onChange={e => setHrForm({...hrForm, reason: e.target.value})}
+                                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none resize-none"
+                                        placeholder="Descreva o motivo da solicitação..."
+                                    />
+                                </div>
+
+                                <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-900/50 hover:bg-blue-500 transition-all uppercase text-xs tracking-widest mt-4">
+                                    Enviar para o RH
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
+        )}
+
         {/* REPORT TAB */}
         {activeTab === 'report' && (
            <div className="animate-in slide-in-from-bottom duration-500 bg-black min-h-full">
@@ -499,6 +654,7 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
             { id: 'route', icon: Navigation, label: 'Rota' },
             { id: 'clock', icon: Clock, label: 'Ponto' },
             { id: 'stock', icon: Package, label: 'Estoque' },
+            { id: 'hr', icon: Briefcase, label: 'RH' },
             { id: 'report', icon: FileText, label: 'Relatório' }
           ].map(item => (
             <button 

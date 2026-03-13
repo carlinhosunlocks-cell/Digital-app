@@ -12,6 +12,8 @@
   "dependencies": {
     "@google/genai": "^1.31.0",
     "firebase": "^12.10.0",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.460.0",
     "parse": "^5.3.0",
     "react": "^19.0.0",

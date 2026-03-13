@@ -78,11 +78,12 @@ export interface HRRequest {
   id: string;
   employeeId: string;
   employeeName: string;
-  type: 'VACATION' | 'SICK_LEAVE' | 'PERSONAL';
+  type: 'VACATION' | 'SICK_LEAVE' | 'REIMBURSEMENT' | 'OTHER';
   startDate: string;
   endDate: string;
   reason: string;
   status: HRRequestStatus;
+  amount: number;
 }
 
 export interface ServiceReport {

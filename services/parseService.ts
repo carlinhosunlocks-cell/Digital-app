@@ -18,7 +18,9 @@ import {
   signOut, 
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { 
@@ -35,7 +37,8 @@ import {
   Subscription, 
   Invoice, 
   InventoryItem, 
-  TechnicianStockItem 
+  TechnicianStockItem,
+  HRRequest
 } from '../types';
 
 enum OperationType {
@@ -47,14 +50,40 @@ enum OperationType {
   WRITE = 'write',
 }
 
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
+  const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
     },
     operationType,
     path
@@ -87,7 +116,73 @@ export const apiService = {
       return newUser;
     } catch (error: any) {
       console.error("Google Login Error:", error);
+      if (error.code === 'auth/operation-not-allowed') {
+        throw new Error("O provedor Google não está habilitado no console do Firebase.");
+      }
       throw new Error("Falha na autenticação com o Google.");
+    }
+  },
+
+  async loginWithEmail(email: string, password: string): Promise<User> {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      
+      if (userDoc.exists()) {
+        return { id: userDoc.id, ...userDoc.data() } as User;
+      }
+
+      // Fallback for admin@admin.com if doc doesn't exist yet but auth worked
+      if (email === 'admin@admin.com' || email === 'amandamartins8901@gmail.com') {
+        const adminUser: User = {
+          id: userCredential.user.uid,
+          name: 'Administrador',
+          email: email,
+          role: 'ADMIN',
+          status: 'active'
+        };
+        await this.saveUser(adminUser);
+        return adminUser;
+      }
+
+      throw new Error("Usuário autenticado mas perfil não encontrado.");
+    } catch (error: any) {
+      console.error("Email Login Error:", error);
+      if (error.code === 'auth/operation-not-allowed') {
+        throw new Error("Login com Email/Senha não está habilitado no Firebase. Habilite no console.");
+      }
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        throw new Error("E-mail ou senha incorretos.");
+      }
+      throw new Error("Falha ao entrar com e-mail.");
+    }
+  },
+
+  async registerWithEmail(userData: Partial<User> & { password?: string }): Promise<User> {
+    try {
+      if (!userData.email || !userData.password) throw new Error("Email e senha são obrigatórios");
+      
+      const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+      
+      const newUser: User = {
+        id: userCredential.user.uid,
+        name: userData.name || userData.email.split('@')[0],
+        email: userData.email,
+        role: userData.role || 'CLIENT',
+        status: 'active',
+        department: userData.department,
+        position: userData.position,
+        salary: userData.salary
+      };
+
+      await this.saveUser(newUser);
+      return newUser;
+    } catch (error: any) {
+      console.error("Registration Error:", error);
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error("Este e-mail já está em uso.");
+      }
+      throw new Error("Falha ao criar usuário.");
     }
   },
 
@@ -131,6 +226,13 @@ export const apiService = {
       delete data.id;
 
       await setDoc(userRef, data, { merge: true });
+      
+      await this.createAuditLog({
+        action: userData.id ? 'UPDATE_USER' : 'CREATE_USER',
+        details: `Usuário ${userData.name || id} salvo.`,
+        severity: 'INFO'
+      });
+
       return { id, ...data } as User;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'users');
@@ -151,16 +253,25 @@ export const apiService = {
 
   async saveOrder(orderData: Partial<ServiceOrder>): Promise<ServiceOrder> {
     try {
+      let result: ServiceOrder;
       if (orderData.id) {
         const orderRef = doc(db, 'orders', orderData.id);
         const data = { ...orderData };
         delete data.id;
         await updateDoc(orderRef, data);
-        return { ...orderData } as ServiceOrder;
+        result = { ...orderData } as ServiceOrder;
       } else {
         const docRef = await addDoc(collection(db, 'orders'), orderData);
-        return { id: docRef.id, ...orderData } as ServiceOrder;
+        result = { id: docRef.id, ...orderData } as ServiceOrder;
       }
+
+      await this.createAuditLog({
+        action: orderData.id ? 'UPDATE_ORDER' : 'CREATE_ORDER',
+        details: `OS ${result.id} - ${result.title}`,
+        severity: 'INFO'
+      });
+
+      return result;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'orders');
       throw error;
@@ -180,12 +291,13 @@ export const apiService = {
 
   async saveTicket(ticketData: Partial<Ticket>): Promise<Ticket> {
     try {
+      let result: Ticket;
       if (ticketData.id) {
         const ticketRef = doc(db, 'tickets', ticketData.id);
         const data = { ...ticketData };
         delete data.id;
         await updateDoc(ticketRef, data);
-        return { ...ticketData } as Ticket;
+        result = { ...ticketData } as Ticket;
       } else {
         const docRef = await addDoc(collection(db, 'tickets'), {
           ...ticketData,
@@ -193,8 +305,16 @@ export const apiService = {
           status: TicketStatus.OPEN,
           messages: []
         });
-        return { id: docRef.id, ...ticketData } as Ticket;
+        result = { id: docRef.id, ...ticketData } as Ticket;
       }
+
+      await this.createAuditLog({
+        action: ticketData.id ? 'UPDATE_TICKET' : 'CREATE_TICKET',
+        details: `Ticket ${result.id} - ${result.subject}`,
+        severity: 'INFO'
+      });
+
+      return result;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'tickets');
       throw error;
@@ -226,6 +346,44 @@ export const apiService = {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticketId}`);
+    }
+  },
+
+  async getHRRequests(): Promise<HRRequest[]> {
+    try {
+      const q = query(collection(db, 'hrRequests'), orderBy('startDate', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HRRequest));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'hrRequests');
+      return [];
+    }
+  },
+
+  async saveHRRequest(requestData: Partial<HRRequest>): Promise<HRRequest> {
+    try {
+      let result: HRRequest;
+      if (requestData.id) {
+        const ref = doc(db, 'hrRequests', requestData.id);
+        const data = { ...requestData };
+        delete data.id;
+        await updateDoc(ref, data);
+        result = { ...requestData } as HRRequest;
+      } else {
+        const docRef = await addDoc(collection(db, 'hrRequests'), requestData);
+        result = { id: docRef.id, ...requestData } as HRRequest;
+      }
+
+      await this.createAuditLog({
+        action: requestData.id ? 'UPDATE_HR_REQUEST' : 'CREATE_HR_REQUEST',
+        details: `Solicitação RH ${result.id} - ${result.type}`,
+        severity: 'INFO'
+      });
+
+      return result;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'hrRequests');
+      throw error;
     }
   },
 
@@ -268,7 +426,15 @@ export const apiService = {
         ...recordData,
         timestamp: new Date().toISOString()
       });
-      return { id: docRef.id, ...recordData } as TimeRecord;
+      const result = { id: docRef.id, ...recordData } as TimeRecord;
+      
+      await this.createAuditLog({
+        action: 'CREATE_TIME_RECORD',
+        details: `Ponto ${result.id} - ${result.type}`,
+        severity: 'INFO'
+      });
+
+      return result;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'timeRecords');
       throw error;
@@ -287,19 +453,28 @@ export const apiService = {
 
   async saveInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
     try {
+      let result: InventoryItem;
       if (itemData.id) {
         const itemRef = doc(db, 'inventory', itemData.id);
         const data = { ...itemData, lastUpdated: new Date().toISOString() };
         delete data.id;
         await updateDoc(itemRef, data);
-        return { ...itemData } as InventoryItem;
+        result = { ...itemData } as InventoryItem;
       } else {
         const docRef = await addDoc(collection(db, 'inventory'), {
           ...itemData,
           lastUpdated: new Date().toISOString()
         });
-        return { id: docRef.id, ...itemData } as InventoryItem;
+        result = { id: docRef.id, ...itemData } as InventoryItem;
       }
+
+      await this.createAuditLog({
+        action: itemData.id ? 'UPDATE_INVENTORY' : 'CREATE_INVENTORY',
+        details: `Item ${result.id} - ${result.name}`,
+        severity: 'INFO'
+      });
+
+      return result;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'inventory');
       throw error;
@@ -350,6 +525,18 @@ export const apiService = {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'technicianStock');
+    }
+  },
+
+  async createAuditLog(log: Omit<AuditLog, 'id' | 'timestamp' | 'actorName'>): Promise<void> {
+    try {
+      await addDoc(collection(db, 'auditLogs'), {
+        ...log,
+        actorName: auth.currentUser?.displayName || auth.currentUser?.email || 'System',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Failed to create audit log:", error);
     }
   },
 
@@ -415,36 +602,65 @@ export const apiService = {
   },
 
   // Real-time listeners
-  subscribeToOrders(callback: (orders: ServiceOrder[]) => void) {
-    const q = query(collection(db, 'orders'), orderBy('date', 'desc'));
+  subscribeToOrders(role: Role, userId: string, callback: (orders: ServiceOrder[]) => void) {
+    let q;
+    if (role === 'ADMIN') {
+      q = query(collection(db, 'orders'), orderBy('date', 'desc'));
+    } else if (role === 'EMPLOYEE') {
+      q = query(collection(db, 'orders'), where('assignedToId', '==', userId), orderBy('date', 'desc'));
+    } else {
+      q = query(collection(db, 'orders'), where('clientId', '==', userId), orderBy('date', 'desc'));
+    }
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceOrder)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
   },
 
-  subscribeToTickets(callback: (tickets: Ticket[]) => void) {
-    const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+  subscribeToTickets(role: Role, userId: string, callback: (tickets: Ticket[]) => void) {
+    let q;
+    if (role === 'ADMIN') {
+      q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+    } else {
+      q = query(collection(db, 'tickets'), where('clientId', '==', userId), orderBy('createdAt', 'desc'));
+    }
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'tickets'));
   },
 
-  subscribeToUsers(callback: (users: User[]) => void) {
+  subscribeToUsers(role: Role, callback: (users: User[]) => void) {
+    // Only admins can see all users, but employees might need to see others for assignment?
+    // Actually, rules say: allow read: if isAdmin() || (isAuthenticated() && resource.id == request.auth.uid);
+    // So employees can't list all users.
+    if (role !== 'ADMIN') return () => {}; 
+    
     const q = query(collection(db, 'users'));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
   },
 
-  subscribeToReports(callback: (reports: ServiceReport[]) => void) {
-    const q = query(collection(db, 'reports'), orderBy('date', 'desc'));
+  subscribeToReports(role: Role, userId: string, callback: (reports: ServiceReport[]) => void) {
+    let q;
+    if (role === 'ADMIN') {
+      q = query(collection(db, 'reports'), orderBy('date', 'desc'));
+    } else if (role === 'EMPLOYEE') {
+      q = query(collection(db, 'reports'), where('technicianId', '==', userId), orderBy('date', 'desc'));
+    } else {
+      q = query(collection(db, 'reports'), where('clientId', '==', userId), orderBy('date', 'desc'));
+    }
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceReport)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'reports'));
   },
 
-  subscribeToTimeRecords(callback: (records: TimeRecord[]) => void) {
-    const q = query(collection(db, 'timeRecords'), orderBy('timestamp', 'desc'));
+  subscribeToTimeRecords(role: Role, userId: string, callback: (records: TimeRecord[]) => void) {
+    let q;
+    if (role === 'ADMIN') {
+      q = query(collection(db, 'timeRecords'), orderBy('timestamp', 'desc'));
+    } else {
+      q = query(collection(db, 'timeRecords'), where('employeeId', '==', userId), orderBy('timestamp', 'desc'));
+    }
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRecord)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'timeRecords'));
@@ -457,11 +673,23 @@ export const apiService = {
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'inventory'));
   },
 
-  subscribeToNotifications(callback: (notifications: Notification[]) => void) {
-    const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
+  subscribeToNotifications(userId: string, callback: (notifications: Notification[]) => void) {
+    const q = query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('timestamp', 'desc'));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
+  },
+
+  subscribeToHRRequests(role: Role, userId: string, callback: (requests: HRRequest[]) => void) {
+    let q;
+    if (role === 'ADMIN') {
+      q = query(collection(db, 'hrRequests'), orderBy('startDate', 'desc'));
+    } else {
+      q = query(collection(db, 'hrRequests'), where('employeeId', '==', userId), orderBy('startDate', 'desc'));
+    }
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HRRequest)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'hrRequests'));
   },
 
   async testConnection() {

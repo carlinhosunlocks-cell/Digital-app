@@ -7,7 +7,7 @@ import {
   Printer, TrendingUp, Calendar, DollarSign, Send, UserPlus, Check, XCircle, Pencil, Power, User as UserIcon, Shield, Trash2, Download, CreditCard, Activity, FileSpreadsheet, Package, LayoutTemplate, List, Calendar as CalendarIcon
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, Tooltip } from 'recharts';
-import { User, ServiceOrder, TimeRecord, Ticket, OrderStatus, TicketStatus, Role, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem } from '../types';
+import { User, ServiceOrder, TimeRecord, Ticket, OrderStatus, TicketStatus, Role, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem, HRRequest, HRRequestStatus } from '../types';
 import MapVisualizer from '../components/MapVisualizer';
 import KanbanBoard from '../components/KanbanBoard';
 import CalendarScheduler from '../components/CalendarScheduler';
@@ -20,7 +20,7 @@ interface AdminViewProps {
   employees: User[];
   timeRecords: TimeRecord[];
   tickets: Ticket[];
-  hrRequests: any[];
+  hrRequests: HRRequest[];
   reports: ServiceReport[];
   notifications: Notification[];
   currentUser: User;
@@ -48,7 +48,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onCreateOrder, onUpdateTicketStatus, onReplyTicket, onSaveEmployee,
   addToast
 }) => {
-  const [activeTab, setActiveTab] = useState<'dash' | 'orders' | 'users' | 'inventory' | 'reports' | 'support' | 'settings' | 'audit'>('dash');
+  const [activeTab, setActiveTab] = useState<'dash' | 'orders' | 'users' | 'inventory' | 'reports' | 'support' | 'hr' | 'settings' | 'audit'>('dash');
   
   // View Modes for Orders
   const [orderViewMode, setOrderViewMode] = useState<'map' | 'kanban' | 'calendar' | 'list'>('kanban');
@@ -224,6 +224,15 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
+  const handleHRAction = async (requestId: string, status: HRRequestStatus) => {
+    try {
+        await apiService.saveHRRequest({ id: requestId, status });
+        addToast(`Solicitação ${status === HRRequestStatus.APPROVED ? 'aprovada' : 'rejeitada'} com sucesso!`);
+    } catch (error) {
+        addToast("Erro ao processar solicitação", "error");
+    }
+  };
+
   const openReplyModal = (ticket: Ticket) => {
     setSelectedTicket(ticket);
     setIsReplyModalOpen(true);
@@ -249,6 +258,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
             { id: 'users', icon: Users, label: 'Gestão de Usuários' },
             { id: 'reports', icon: FileText, label: 'Relatórios & OS' },
             { id: 'support', icon: MessageSquare, label: 'Atendimento' },
+            { id: 'hr', icon: Briefcase, label: 'Recursos Humanos' },
             { id: 'audit', icon: Shield, label: 'Logs de Auditoria' },
             { id: 'settings', icon: Settings, label: 'Configurações' },
           ].map((item) => (
@@ -611,6 +621,81 @@ export const AdminView: React.FC<AdminViewProps> = ({
              </div>
           )}
 
+          {activeTab === 'hr' && (
+             <div className="space-y-6 animate-in fade-in duration-300 overflow-auto h-full pr-2 no-scrollbar">
+                <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
+                   <div className="p-6 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800">Solicitações de RH</h3>
+                            <p className="text-xs text-slate-500">Gestão de férias, folgas e reembolsos</p>
+                        </div>
+                   </div>
+                   <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
+                         <tr>
+                            <th className="px-8 py-5">Colaborador</th>
+                            <th className="px-8 py-5">Tipo / Período</th>
+                            <th className="px-8 py-5 text-center">Status</th>
+                            <th className="px-8 py-5 text-right">Ações</th>
+                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                         {hrRequests.map(request => (
+                            <tr key={request.id} className="hover:bg-slate-50/50 transition">
+                               <td className="px-8 py-5">
+                                  <p className="font-bold text-slate-800 text-sm">{request.employeeName}</p>
+                                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">{request.type}</p>
+                               </td>
+                               <td className="px-8 py-5">
+                                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                     <Calendar size={14} />
+                                     {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
+                                  </div>
+                                  {request.reason && <p className="text-[10px] text-slate-400 mt-1 italic">"{request.reason}"</p>}
+                               </td>
+                               <td className="px-8 py-5 text-center">
+                                  <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${
+                                     request.status === HRRequestStatus.PENDING ? 'bg-amber-100 text-amber-600' :
+                                     request.status === HRRequestStatus.APPROVED ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                                  }`}>
+                                     {request.status === HRRequestStatus.PENDING ? 'Pendente' : request.status === HRRequestStatus.APPROVED ? 'Aprovado' : 'Rejeitado'}
+                                  </span>
+                               </td>
+                               <td className="px-8 py-5 text-right">
+                                  {request.status === HRRequestStatus.PENDING && (
+                                    <div className="flex justify-end gap-2">
+                                       <button 
+                                         onClick={() => handleHRAction(request.id, HRRequestStatus.APPROVED)}
+                                         className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
+                                         title="Aprovar"
+                                       >
+                                          <Check size={18} />
+                                       </button>
+                                       <button 
+                                         onClick={() => handleHRAction(request.id, HRRequestStatus.REJECTED)}
+                                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                                         title="Rejeitar"
+                                       >
+                                          <XCircle size={18} />
+                                       </button>
+                                    </div>
+                                  )}
+                               </td>
+                            </tr>
+                         ))}
+                         {hrRequests.length === 0 && (
+                            <tr>
+                               <td colSpan={4} className="px-8 py-10 text-center text-slate-400 text-sm italic">
+                                  Nenhuma solicitação pendente no momento.
+                               </td>
+                            </tr>
+                         )}
+                      </tbody>
+                   </table>
+                </div>
+             </div>
+          )}
+
           {activeTab === 'settings' && subscription && (
              <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 overflow-auto h-full pr-2 no-scrollbar">
                 
@@ -770,6 +855,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email de Login</label>
                         <input required type="email" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 outline-none focus:border-blue-500" />
                      </div>
+                     {!editingUserId && (
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha Inicial</label>
+                          <input required type="password" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 outline-none focus:border-blue-500" placeholder="••••••••" />
+                       </div>
+                     )}
                   </div>
 
                   {userForm.role !== 'CLIENT' && (

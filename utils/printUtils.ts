@@ -1,143 +1,101 @@
-export const printReport = (report: any) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Por favor, permita popups para imprimir o relatório.');
-    return;
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import { ServiceReport } from '../types';
+
+export const printReport = (report: ServiceReport) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header
+  doc.setFillColor(0, 0, 0);
+  doc.rect(0, 0, pageWidth, 40, 'F');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
+  doc.text('DIGITAL EQUIPAMENTOS', 20, 25);
+  
+  doc.setFontSize(10);
+  doc.text('RELATÓRIO TÉCNICO DE SERVIÇO', 20, 33);
+  
+  doc.setTextColor(150, 150, 150);
+  doc.text(`OS #${report.id.slice(-6).toUpperCase()}`, pageWidth - 20, 25, { align: 'right' });
+
+  // Client & Info
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DADOS DO CLIENTE', 20, 55);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Cliente: ${report.clientName}`, 20, 62);
+  doc.text(`Técnico: ${report.technicianName}`, 20, 67);
+  doc.text(`Data: ${new Date(report.date).toLocaleDateString()}`, 20, 72);
+  doc.text(`Horário: ${report.startTime} - ${report.endTime}`, 20, 77);
+
+  // Checklist Table
+  const checklistData = [
+    ['Portão Automático', report.services?.gate ? 'OK' : 'N/A'],
+    ['Sistema CFTV', report.services?.cctv ? 'OK' : 'N/A'],
+    ['Interfonia', report.services?.intercom ? 'OK' : 'N/A'],
+    ['Fechaduras Eletroímã', report.services?.lock ? 'OK' : 'N/A'],
+    ['Manutenção Preventiva', report.services?.preventive ? 'OK' : 'N/A'],
+  ];
+
+  (doc as any).autoTable({
+    startY: 85,
+    head: [['Item de Verificação', 'Status']],
+    body: checklistData,
+    theme: 'striped',
+    headStyles: { fillColor: [0, 0, 0] },
+  });
+
+  // Parts Used
+  let finalY = (doc as any).lastAutoTable.finalY + 10;
+  
+  if (report.partsUsed && report.partsUsed.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('MATERIAIS UTILIZADOS', 20, finalY);
+    
+    const partsData = report.partsUsed.map(p => [p.itemName, p.quantity.toString()]);
+    
+    (doc as any).autoTable({
+      startY: finalY + 5,
+      head: [['Material', 'Quantidade']],
+      body: partsData,
+      theme: 'grid',
+      headStyles: { fillColor: [100, 100, 100] },
+    });
+    
+    finalY = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Relatório Técnico - OS #${report.id.slice(-4)}</title>
-      <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; padding: 40px; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
-        .logo { font-size: 24px; font-weight: bold; color: #000; }
-        .logo span { color: #666; font-weight: normal; }
-        .title { font-size: 28px; font-weight: bold; margin: 0 0 10px 0; }
-        .meta { color: #666; font-size: 14px; }
-        .section { margin-bottom: 30px; }
-        .section-title { font-size: 18px; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; color: #444; text-transform: uppercase; letter-spacing: 1px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .field { margin-bottom: 15px; }
-        .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; font-weight: bold; }
-        .value { font-size: 16px; font-weight: 500; }
-        .checklist { list-style: none; padding: 0; margin: 0; }
-        .checklist li { padding: 10px 0; border-bottom: 1px solid #f5f5f5; display: flex; justify-content: space-between; }
-        .checklist li:last-child { border-bottom: none; }
-        .status-ok { color: #16a34a; font-weight: bold; }
-        .status-pending { color: #d97706; font-weight: bold; }
-        .parts-table { w-full; border-collapse: collapse; width: 100%; }
-        .parts-table th, .parts-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        .parts-table th { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        .footer { margin-top: 50px; padding-top: 30px; border-top: 2px solid #eee; display: flex; justify-content: space-between; }
-        .signature-box { text-align: center; width: 250px; }
-        .signature-line { border-bottom: 1px solid #000; height: 40px; margin-bottom: 10px; display: flex; align-items: flex-end; justify-content: center; font-family: 'Brush Script MT', cursive; font-size: 24px; }
-        @media print {
-          body { padding: 0; }
-          button { display: none; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div>
-          <div class="logo">Digital<span>Equipamentos</span></div>
-          <p class="meta">Relatório Técnico de Manutenção</p>
-        </div>
-        <div style="text-align: right;">
-          <h1 class="title">OS #${report.id.slice(-4)}</h1>
-          <p class="meta">Data: ${new Date(report.date).toLocaleDateString()}</p>
-        </div>
-      </div>
+  // Comments
+  doc.setFont('helvetica', 'bold');
+  doc.text('OBSERVAÇÕES TÉCNICAS', 20, finalY);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const splitComments = doc.splitTextToSize(report.comments || 'Nenhuma observação adicional.', pageWidth - 40);
+  doc.text(splitComments, 20, finalY + 7);
 
-      <div class="grid">
-        <div class="section">
-          <h2 class="section-title">Dados do Cliente</h2>
-          <div class="field">
-            <div class="label">Cliente / Empresa</div>
-            <div class="value">${report.clientName}</div>
-          </div>
-          <div class="field">
-            <div class="label">Endereço do Serviço</div>
-            <div class="value">${report.address || 'Não informado'}</div>
-          </div>
-        </div>
-        <div class="section">
-          <h2 class="section-title">Dados do Atendimento</h2>
-          <div class="field">
-            <div class="label">Técnico Responsável</div>
-            <div class="value">${report.technicianName}</div>
-          </div>
-          <div class="field">
-            <div class="label">Horário de Execução</div>
-            <div class="value">${report.startTime || '--:--'} às ${report.endTime || '--:--'}</div>
-          </div>
-        </div>
-      </div>
+  // Signature
+  const signatureY = finalY + 40;
+  doc.line(20, signatureY, 90, signatureY);
+  doc.setFontSize(8);
+  doc.text('ASSINATURA DO TÉCNICO', 20, signatureY + 5);
+  
+  doc.line(pageWidth - 90, signatureY, pageWidth - 20, signatureY);
+  doc.text('ASSINATURA DO CLIENTE', pageWidth - 90, signatureY + 5);
+  
+  if (report.signatureName) {
+    doc.setFontSize(14);
+    doc.text(report.signatureName, 110, signatureY - 5);
+  }
 
-      <div class="section">
-        <h2 class="section-title">Checklist de Sistemas</h2>
-        <ul class="checklist">
-          <li><span>Portão Automático</span> <span class="${report.services?.gate ? 'status-ok' : 'status-pending'}">${report.services?.gate ? 'Verificado' : 'Não Verificado'}</span></li>
-          <li><span>Sistema CFTV</span> <span class="${report.services?.cctv ? 'status-ok' : 'status-pending'}">${report.services?.cctv ? 'Verificado' : 'Não Verificado'}</span></li>
-          <li><span>Interfonia</span> <span class="${report.services?.intercom ? 'status-ok' : 'status-pending'}">${report.services?.intercom ? 'Verificado' : 'Não Verificado'}</span></li>
-          <li><span>Fechaduras Eletroímã</span> <span class="${report.services?.lock ? 'status-ok' : 'status-pending'}">${report.services?.lock ? 'Verificado' : 'Não Verificado'}</span></li>
-          <li><span>Manutenção Preventiva</span> <span class="${report.services?.preventive ? 'status-ok' : 'status-pending'}">${report.services?.preventive ? 'Realizada' : 'Não Realizada'}</span></li>
-        </ul>
-      </div>
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text('Documento gerado automaticamente pelo sistema Digital Equipamentos.', pageWidth / 2, 285, { align: 'center' });
 
-      ${report.partsUsed && report.partsUsed.length > 0 ? `
-      <div class="section">
-        <h2 class="section-title">Materiais Utilizados</h2>
-        <table class="parts-table">
-          <thead>
-            <tr>
-              <th>Qtd</th>
-              <th>Descrição do Material</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${report.partsUsed.map((part: any) => `
-              <tr>
-                <td>${part.quantity}x</td>
-                <td>${part.itemName}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
-
-      <div class="section">
-        <h2 class="section-title">Observações Técnicas</h2>
-        <p style="white-space: pre-wrap; background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #eee;">${report.comments || 'Nenhuma observação adicional.'}</p>
-      </div>
-
-      <div class="footer">
-        <div class="signature-box">
-          <div class="signature-line">${report.technicianName}</div>
-          <div class="label">Assinatura do Técnico</div>
-        </div>
-        <div class="signature-box">
-          <div class="signature-line">${report.signatureName || ''}</div>
-          <div class="label">Assinatura do Cliente</div>
-        </div>
-      </div>
-
-      <script>
-        window.onload = () => {
-          setTimeout(() => {
-            window.print();
-          }, 500);
-        };
-      </script>
-    </body>
-    </html>
-  `;
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
+  doc.save(`Relatorio_OS_${report.id.slice(-6)}.pdf`);
 };

@@ -114,7 +114,8 @@ export const INITIAL_HR_REQUESTS: HRRequest[] = [
     startDate: '2023-12-20',
     endDate: '2024-01-05',
     reason: 'Férias anuais programadas.',
-    status: HRRequestStatus.PENDING
+    status: HRRequestStatus.PENDING,
+    amount: 0
   },
   {
     id: 'hr2',
@@ -124,7 +125,8 @@ export const INITIAL_HR_REQUESTS: HRRequest[] = [
     startDate: '2023-11-10',
     endDate: '2023-11-12',
     reason: 'Consulta médica e repouso.',
-    status: HRRequestStatus.APPROVED
+    status: HRRequestStatus.APPROVED,
+    amount: 0
   }
 ];
 

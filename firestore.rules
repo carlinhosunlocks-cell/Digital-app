@@ -38,23 +38,84 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
-          (request.auth.token.email == "amandamartins8901@gmail.com" && request.auth.token.email_verified == true));
+          ((request.auth.token.email == "amandamartins8901@gmail.com" || request.auth.token.email == "admin@admin.com") && request.auth.token.email_verified == true));
     }
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.uid;
-    }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
     }
 
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isEmployee() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'EMPLOYEE';
+    }
+
+    function isClient() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CLIENT';
+    }
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['name', 'role', 'email', 'avatar', 'status', 'department', 'position', 'salary', 'hireDate']) &&
+             isValidString(data.name, 100) &&
+             data.role in ['ADMIN', 'EMPLOYEE', 'CLIENT'] &&
+             isValidEmail(data.email) &&
+             (!('avatar' in data) || isValidString(data.avatar, 500)) &&
+             (!('status' in data) || data.status in ['active', 'idle']) &&
+             (!('department' in data) || isValidString(data.department, 100)) &&
+             (!('position' in data) || isValidString(data.position, 100)) &&
+             (!('salary' in data) || data.salary is number) &&
+             (!('hireDate' in data) || isValidString(data.hireDate, 50));
+    }
+
+    function isValidOrder(data) {
+      return hasOnlyAllowedFields(['title', 'customerName', 'address', 'lat', 'lng', 'description', 'status', 'assignedToId', 'date', 'priority']) &&
+             isValidString(data.title, 200) &&
+             isValidString(data.customerName, 100) &&
+             isValidString(data.address, 300) &&
+             data.lat is number && data.lng is number &&
+             isValidString(data.description, 2000) &&
+             data.status in ['Pendente', 'Em Rota', 'Concluído', 'Cancelado'] &&
+             isValidString(data.assignedToId, 50) &&
+             isValidString(data.date, 50) &&
+             (!('priority' in data) || data.priority in ['LOW', 'MEDIUM', 'HIGH']);
+    }
+
+    function isValidTicket(data) {
+      return hasOnlyAllowedFields(['clientId', 'clientName', 'subject', 'description', 'status', 'createdAt', 'messages']) &&
+             isValidString(data.clientId, 50) &&
+             isValidString(data.clientName, 100) &&
+             isValidString(data.subject, 200) &&
+             isValidString(data.description, 2000) &&
+             data.status in ['Aberto', 'Em Análise', 'Resolvido'] &&
+             isValidString(data.createdAt, 50) &&
+             data.messages is list;
+    }
+
+    function isValidHRRequest(data) {
+      return hasOnlyAllowedFields(['employeeId', 'employeeName', 'type', 'startDate', 'endDate', 'reason', 'status', 'amount']) &&
+             isValidString(data.employeeId, 50) &&
+             isValidString(data.employeeName, 100) &&
+             data.type in ['VACATION', 'SICK_LEAVE', 'PERSONAL', 'REIMBURSEMENT', 'OTHER'] &&
+             isValidString(data.startDate, 50) &&
+             isValidString(data.endDate, 50) &&
+             isValidString(data.reason, 1000) &&
+             data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             (!('amount' in data) || data.amount is number);
     }
 
     // ===============================================================
@@ -62,17 +123,17 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (
+      // PII Protection: Only admins or the owner can read full profile
+      allow read: if isAdmin() || isOwner(userId);
+      
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
         isAdmin() || 
         (isOwner(userId) && (
-          !('role' in request.resource.data) || 
           request.resource.data.role != 'ADMIN' || 
-          request.auth.token.email == 'admin@admin.com' ||
-          request.auth.token.email == 'amandamartins8901@gmail.com'
+          request.auth.token.email == "amandamartins8901@gmail.com"
         ))
       );
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
         isAdmin() || 
         (isOwner(userId) && request.resource.data.role == resource.data.role)
       );
@@ -80,30 +141,47 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.assignedToId);
+      // Employees can only see orders assigned to them
+      allow read: if isAdmin() || (isEmployee() && resource.data.assignedToId == request.auth.uid);
+      
+      allow create: if isAdmin() && isValidOrder(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (isAdmin() && isValidOrder(request.resource.data)) || 
+        (isEmployee() && request.auth.uid == resource.data.assignedToId && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+      );
       allow delete: if isAdmin();
     }
 
     match /tickets/{ticketId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid);
+      allow read: if isAdmin() || (isClient() && resource.data.clientId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidTicket(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (isAdmin() && isValidTicket(request.resource.data)) || 
+        (isClient() && resource.data.clientId == request.auth.uid && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messages', 'status']))
+      );
       allow delete: if isAdmin();
     }
 
     match /reports/{reportId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'EMPLOYEE');
+      allow read: if isAdmin() || (isEmployee() && resource.data.technicianId == request.auth.uid) || (isClient() && resource.data.clientId == request.auth.uid);
+      allow create: if isAuthenticated() && (isAdmin() || isEmployee());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /timeRecords/{recordId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.employeeId == request.auth.uid;
+      allow read: if isAdmin() || (isEmployee() && resource.data.employeeId == request.auth.uid);
+      allow create: if isEmployee() && request.resource.data.employeeId == request.auth.uid;
       allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /hrRequests/{requestId} {
+      allow read: if isAdmin() || (isEmployee() && resource.data.employeeId == request.auth.uid);
+      allow create: if isEmployee() && request.resource.data.employeeId == request.auth.uid && isValidHRRequest(request.resource.data);
+      allow update: if isAdmin() && isValidHRRequest(request.resource.data);
       allow delete: if isAdmin();
     }
 
@@ -129,9 +207,9 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (isAdmin() || !('targetUserId' in resource.data) || resource.data.targetUserId == request.auth.uid);
       allow create: if isAdmin();
-      allow update: if isAuthenticated();
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.targetUserId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
