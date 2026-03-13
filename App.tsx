@@ -12,7 +12,7 @@ import {
 import { auth } from './firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { apiService } from './services/parseService';
-import { User, ServiceOrder, Ticket, TimeRecord, ServiceReport, OrderStatus, TicketStatus } from './types';
+import { User, ServiceOrder, Ticket, TimeRecord, ServiceReport, OrderStatus, TicketStatus, Notification } from './types';
 import { AdminView } from './views/AdminView';
 import { EmployeeView } from './views/EmployeeView';
 import { ClientView } from './views/ClientView';
@@ -83,7 +83,7 @@ const Toast: React.FC<{ message: string; type: 'success' | 'error'; onClose: () 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
 
   // Data States
@@ -91,6 +91,7 @@ const App: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [reports, setReports] = useState<ServiceReport[]>([]);
 
   const addToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -110,13 +111,9 @@ const App: React.FC = () => {
           const userData = await apiService.getCurrentUser(firebaseUser.uid);
           if (userData) {
             setCurrentUser(userData);
-          } else {
-            await auth.signOut();
-            setCurrentUser(null);
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
-          setCurrentUser(null);
         }
       } else {
         setCurrentUser(null);
@@ -139,51 +136,43 @@ const App: React.FC = () => {
       setTickets(updatedTickets);
     });
 
+    const unsubUsers = apiService.subscribeToUsers((updatedUsers) => {
+      setEmployees(updatedUsers);
+    });
+
+    const unsubReports = apiService.subscribeToReports((updatedReports) => {
+      setReports(updatedReports);
+    });
+
+    const unsubTimeRecords = apiService.subscribeToTimeRecords((updatedRecords) => {
+      setTimeRecords(updatedRecords);
+    });
+
+    const unsubNotifications = apiService.subscribeToNotifications((updatedNotifications) => {
+      setNotifications(updatedNotifications);
+    });
+
     return () => {
       unsubOrders();
       unsubTickets();
+      unsubUsers();
+      unsubReports();
+      unsubTimeRecords();
+      unsubNotifications();
     };
   }, [currentUser]);
 
-  // Load Static Data
-  const loadAllData = useCallback(async () => {
-    if (!currentUser) return;
-    setDataLoading(true);
-    try {
-      const [usersData, reportsData, timeData] = await Promise.all([
-        apiService.getUsers(),
-        apiService.getReports(),
-        apiService.getTimeRecords()
-      ]);
-      setEmployees(usersData);
-      setReports(reportsData);
-      setTimeRecords(timeData);
-    } catch (error) {
-      console.error("Error loading data:", error);
-      addToast("Erro ao carregar dados do servidor", "error");
-    } finally {
-      setDataLoading(false);
-    }
-  }, [currentUser, addToast]);
-
-  useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
-
   // Handlers
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = (e.target as any).email.value;
-    const password = (e.target as any).password.value;
-    
+  const handleGoogleLogin = async () => {
     try {
-      setInitialLoading(true);
-      await apiService.login(email, password);
+      setAuthLoading(true);
+      const user = await apiService.loginWithGoogle();
+      setCurrentUser(user);
       addToast("Bem-vindo de volta!");
     } catch (error: any) {
-      addToast(error.message || "Falha no login", "error");
+      addToast(error.message || "Falha no login com Google", "error");
     } finally {
-      setInitialLoading(false);
+      setAuthLoading(false);
     }
   };
 
@@ -227,7 +216,6 @@ const App: React.FC = () => {
   const handleSaveEmployee = async (user: Partial<User> & { password?: string }) => {
     try {
       await apiService.saveUser(user);
-      await loadAllData();
       addToast("Usuário salvo com sucesso");
     } catch (error) {
       addToast("Erro ao salvar usuário", "error");
@@ -251,7 +239,6 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
         location: 'Localização via GPS'
       });
-      await loadAllData();
       addToast(type === 'CLOCK_IN' ? "Entrada registrada" : "Saída registrada");
     } catch (error) {
       addToast("Erro ao registrar ponto", "error");
@@ -261,7 +248,6 @@ const App: React.FC = () => {
   const handleCreateReport = async (report: ServiceReport) => {
     try {
       await apiService.saveReport(report);
-      await loadAllData();
       addToast("Relatório técnico enviado!");
     } catch (error) {
       addToast("Erro ao enviar relatório", "error");
@@ -299,50 +285,29 @@ const App: React.FC = () => {
             <p className="text-slate-400 font-medium mt-2">Acesse sua conta corporativa</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Corporativo</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  name="email"
-                  type="email" 
-                  required 
-                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition font-medium"
-                  placeholder="seu@email.com"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha de Acesso</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  name="password"
-                  type="password" 
-                  required 
-                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition font-medium"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit" 
-              className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[0.99] transition-all flex justify-center items-center gap-2 uppercase text-xs tracking-widest"
+          <div className="mt-6">
+            <button
+              onClick={handleGoogleLogin}
+              disabled={authLoading}
+              className="w-full py-5 bg-white border-2 border-slate-100 text-slate-700 font-black rounded-2xl shadow-xl shadow-slate-100 hover:bg-slate-50 hover:border-slate-200 hover:scale-[0.99] transition-all flex justify-center items-center gap-3 uppercase text-xs tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Entrar no Sistema
+              {authLoading ? <Loader2 className="animate-spin" size={18} /> : (
+                <>
+                  <svg className="w-6 h-6" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                  </svg>
+                  Entrar com Google
+                </>
+              )}
             </button>
-          </form>
+          </div>
 
-          <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-             <p className="text-[10px] text-slate-400 font-bold uppercase text-center mb-2">Acesso Rápido (Demo - Senha: 123456)</p>
-             <div className="flex justify-center gap-4 text-[10px] font-black text-blue-600">
-                <span>admin@admin.com</span>
-                <span>tech@tech.com</span>
-                <span>cliente@cliente.com</span>
-             </div>
+          <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+             <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">Acesso Seguro</p>
+             <p className="text-xs text-slate-500">Utilize sua conta Google corporativa para acessar a plataforma.</p>
           </div>
         </div>
       </div>
@@ -360,11 +325,12 @@ const App: React.FC = () => {
             tickets={tickets}
             hrRequests={[]}
             reports={reports}
+            notifications={notifications}
+            currentUser={currentUser}
             onCreateOrder={handleCreateOrder}
             onUpdateTicketStatus={handleUpdateTicketStatus}
             onReplyTicket={handleReplyTicket}
             onSaveEmployee={handleSaveEmployee}
-            onRefresh={loadAllData}
             addToast={addToast}
           />
         )}
@@ -376,6 +342,7 @@ const App: React.FC = () => {
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onClockAction={handleClockAction}
             timeRecords={timeRecords}
+            notifications={notifications}
             onCreateReport={handleCreateReport}
           />
         )}

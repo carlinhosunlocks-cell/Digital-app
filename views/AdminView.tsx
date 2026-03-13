@@ -13,6 +13,7 @@ import KanbanBoard from '../components/KanbanBoard';
 import CalendarScheduler from '../components/CalendarScheduler';
 import InventoryManager from '../components/InventoryManager';
 import { apiService } from '../services/parseService';
+import { printReport } from '../utils/printUtils';
 
 interface AdminViewProps {
   orders: ServiceOrder[];
@@ -21,11 +22,12 @@ interface AdminViewProps {
   tickets: Ticket[];
   hrRequests: any[];
   reports: ServiceReport[];
+  notifications: Notification[];
+  currentUser: User;
   onCreateOrder: (order: ServiceOrder) => void;
   onUpdateTicketStatus: (ticketId: string, status: TicketStatus) => void;
   onReplyTicket: (ticketId: string, message: string) => void;
   onSaveEmployee: (user: Partial<User> & { password?: string }) => void;
-  onRefresh: () => Promise<void>;
   addToast: (msg: string, type?: 'success' | 'error') => void;
 }
 
@@ -42,9 +44,9 @@ const Card: React.FC<{ title?: string; children: React.ReactNode; className?: st
 );
 
 export const AdminView: React.FC<AdminViewProps> = ({ 
-  orders, employees, timeRecords, tickets, hrRequests, reports, 
+  orders, employees, timeRecords, tickets, hrRequests, reports, notifications, currentUser,
   onCreateOrder, onUpdateTicketStatus, onReplyTicket, onSaveEmployee,
-  onRefresh, addToast
+  addToast
 }) => {
   const [activeTab, setActiveTab] = useState<'dash' | 'orders' | 'users' | 'inventory' | 'reports' | 'support' | 'settings' | 'audit'>('dash');
   
@@ -60,7 +62,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   
   // SaaS States
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -70,12 +71,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
   useEffect(() => {
     const loadSaaSData = async () => {
         const logs = await apiService.getAuditLogs();
-        const notifs = await apiService.getNotifications();
         const sub = await apiService.getSubscription();
         const inv = await apiService.getInvoices();
         const items = await apiService.getInventory();
         setAuditLogs(logs);
-        setNotifications(notifs);
         setSubscription(sub);
         setInvoices(inv);
         setInventory(items);
@@ -88,7 +87,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   const handleMarkRead = async (id: string) => {
       await apiService.markNotificationRead(id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
   const handleInventorySave = async (item: Partial<InventoryItem>) => {
@@ -108,7 +106,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
           const items = await apiService.getInventory();
           setInventory(items);
           addToast("Materiais entregues ao técnico!");
-          await onRefresh(); // Refresh app to ensure any linked data updates
       } catch (error: any) {
           addToast(error.message || "Erro na transferência", "error");
       }
@@ -117,7 +114,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleStatusChange = async (id: string, newStatus: OrderStatus) => {
       try {
         await apiService.saveOrder({ id, status: newStatus });
-        await onRefresh();
         addToast(`Status da OS alterado para ${newStatus}`);
       } catch (e) {
         addToast("Erro ao atualizar status", "error");
@@ -515,7 +511,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                                <span className="text-green-600">Finalizado</span>
                             </div>
                          </div>
-                         <button className="w-full py-3 bg-slate-50 text-slate-700 text-xs font-black rounded-xl hover:bg-slate-100 flex items-center justify-center gap-2 transition-colors">
+                         <button onClick={() => printReport(report)} className="w-full py-3 bg-slate-50 text-slate-700 text-xs font-black rounded-xl hover:bg-slate-100 flex items-center justify-center gap-2 transition-colors">
                             <Download size={14} /> DOWNLOAD PDF
                          </button>
                       </Card>

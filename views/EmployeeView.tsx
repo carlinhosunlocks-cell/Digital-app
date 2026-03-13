@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus } from 'lucide-react';
-import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem } from '../types';
+import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus, Bell } from 'lucide-react';
+import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem, Notification } from '../types';
 import MapVisualizer from '../components/MapVisualizer';
 import { apiService } from '../services/parseService';
 
@@ -11,13 +11,15 @@ interface EmployeeViewProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
   onClockAction: (type: 'CLOCK_IN' | 'CLOCK_OUT') => void;
   timeRecords: TimeRecord[];
+  notifications: Notification[];
   onCreateReport: (report: ServiceReport) => void;
 }
 
-export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, onCreateReport }) => {
+export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, onCreateReport }) => {
   const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock'>('route');
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<ServiceOrder | null>(null);
   const [myStock, setMyStock] = useState<TechnicianStockItem[]>([]);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
   
   // Load stock
   useEffect(() => {
@@ -116,6 +118,12 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
     setActiveTab('route');
   };
 
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleMarkRead = async (id: string) => {
+      await apiService.markNotificationRead(id);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-black max-w-md mx-auto shadow-2xl relative overflow-hidden font-sans text-slate-100">
       {/* Background Ambience */}
@@ -138,12 +146,41 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
              <p className="text-[10px] text-white/50 uppercase tracking-wide">Digital Field App</p>
            </div>
         </div>
-        <button className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10 active:scale-95 transition">
-           <Menu size={20} className="text-white"/>
-        </button>
+        <div className="relative">
+          <button 
+            onClick={() => setShowNotifMenu(!showNotifMenu)}
+            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/10 active:scale-95 transition"
+          >
+             <Bell size={20} className="text-white"/>
+             {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-black"></span>}
+          </button>
+          
+          {showNotifMenu && (
+            <div className="absolute right-0 mt-2 w-72 bg-slate-900 rounded-2xl shadow-2xl border border-white/10 overflow-hidden z-50">
+                <div className="p-4 border-b border-white/10 bg-slate-800/50">
+                  <h3 className="font-bold text-white text-sm">Notificações</h3>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400 text-xs">Nenhuma notificação.</div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} onClick={() => handleMarkRead(n.id)} className={`p-4 border-b border-white/5 cursor-pointer hover:bg-white/5 transition ${!n.read ? 'bg-blue-900/20' : ''}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={`w-2 h-2 rounded-full ${n.type === 'error' ? 'bg-red-500' : n.type === 'success' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                          <span className="text-xs font-bold text-white">{n.title}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2">{n.message}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+            </div>
+          )}
+        </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 pb-28 scroll-smooth z-10 no-scrollbar">
+      <main className="flex-1 overflow-auto px-4 pb-28 scroll-smooth z-10 no-scrollbar" onClick={() => setShowNotifMenu(false)}>
         {activeTab === 'route' && (
           <div className="space-y-6 animate-in slide-in-from-right duration-300">
             {/* Widget GPS */}

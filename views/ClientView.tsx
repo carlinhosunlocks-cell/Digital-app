@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MessageSquare, ChevronLeft, ChevronRight, Send, CheckCircle, ArrowRight, Star, Shield, Cpu, FileText, Download } from 'lucide-react';
 import { Ticket, User, ChatMessage, ServiceReport } from '../types';
 import { getGeminiChatResponse } from '../services/geminiService';
+import { printReport } from '../utils/printUtils';
 
 interface ClientViewProps {
   currentUser: User;
@@ -254,7 +255,7 @@ export const ClientView: React.FC<ClientViewProps> = ({ currentUser, tickets, re
                           </div>
                        </div>
 
-                       <button className="w-full py-4 rounded-xl border-2 border-gray-100 font-bold text-gray-600 flex items-center justify-center gap-2 group-hover:border-black group-hover:bg-black group-hover:text-white transition-all cursor-not-allowed" title="Apenas visualização na demo">
+                       <button onClick={() => printReport(report)} className="w-full py-4 rounded-xl border-2 border-gray-100 font-bold text-gray-600 flex items-center justify-center gap-2 hover:border-black hover:bg-black hover:text-white transition-all" title="Baixar PDF do Relatório">
                           <Download size={18} /> Baixar PDF
                        </button>
                     </div>

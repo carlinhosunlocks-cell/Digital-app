@@ -15,10 +15,10 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { 
-  signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  createUserWithEmailAndPassword
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { 
@@ -64,25 +64,30 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export const apiService = {
-  async login(email: string, pass: string): Promise<User> {
+  async loginWithGoogle(): Promise<User> {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       if (userDoc.exists()) {
         return { id: userDoc.id, ...userDoc.data() } as User;
       }
-      // If user doc doesn't exist but auth does (e.g. first time login for bootstrap admin)
+
+      // If user doc doesn't exist but auth does
       const newUser: User = {
         id: userCredential.user.uid,
-        name: userCredential.user.displayName || email.split('@')[0],
-        email: email,
-        role: email === 'admin@admin.com' ? 'ADMIN' : 'EMPLOYEE',
-        status: 'active'
+        name: userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'User',
+        email: userCredential.user.email || '',
+        role: 'CLIENT', // Default role for Google Sign In
+        status: 'active',
+        avatar: userCredential.user.photoURL || undefined
       };
       await this.saveUser(newUser);
       return newUser;
-    } catch (error) {
-      throw new Error("Credenciais inválidas ou erro de sistema.");
+    } catch (error: any) {
+      console.error("Google Login Error:", error);
+      throw new Error("Falha na autenticação com o Google.");
     }
   },
 
@@ -422,6 +427,41 @@ export const apiService = {
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'tickets'));
+  },
+
+  subscribeToUsers(callback: (users: User[]) => void) {
+    const q = query(collection(db, 'users'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+  },
+
+  subscribeToReports(callback: (reports: ServiceReport[]) => void) {
+    const q = query(collection(db, 'reports'), orderBy('date', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ServiceReport)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'reports'));
+  },
+
+  subscribeToTimeRecords(callback: (records: TimeRecord[]) => void) {
+    const q = query(collection(db, 'timeRecords'), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRecord)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'timeRecords'));
+  },
+
+  subscribeToInventory(callback: (items: InventoryItem[]) => void) {
+    const q = query(collection(db, 'inventory'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'inventory'));
+  },
+
+  subscribeToNotifications(callback: (notifications: Notification[]) => void) {
+    const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
   },
 
   async testConnection() {

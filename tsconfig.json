@@ -16,6 +16,6 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "types.ts", "App.tsx", "index.tsx", "firebase.ts", "services", "views", "components"],
+  "include": ["src", "types.ts", "App.tsx", "index.tsx", "firebase.ts", "services", "views", "components", "utils"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
