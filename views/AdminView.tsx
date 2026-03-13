@@ -1,5 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
 import { 
   LayoutDashboard, Users, FileText, Settings, Plus, 
   Map as MapIcon, CheckCircle, AlertTriangle, MessageSquare, 
@@ -70,6 +72,21 @@ export const AdminView: React.FC<AdminViewProps> = ({
   addToast
 }) => {
   const [activeTab, setActiveTab] = useState<'dash' | 'orders' | 'users' | 'inventory' | 'reports' | 'support' | 'hr' | 'settings' | 'audit'>('dash');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const storageRef = ref(storage, 'logos/company-logo');
+    try {
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setLogoUrl(url);
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+    }
+  };
   
   // View Modes for Orders
   const [orderViewMode, setOrderViewMode] = useState<'map' | 'kanban' | 'calendar' | 'list'>('kanban');
@@ -723,9 +740,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 {/* Organization Settings Mock */}
                 <Card title="Personalização da Organização">
                     <div className="flex gap-6 items-center">
-                        <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 cursor-pointer hover:border-blue-500 transition">
-                            <UploadLogoPlaceholder />
-                        </div>
+                        <label className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 cursor-pointer hover:border-blue-500 transition overflow-hidden">
+                            {logoUrl ? (
+                                <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                            ) : (
+                                <UploadLogoPlaceholder />
+                            )}
+                            <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                        </label>
                         <div className="space-y-4 flex-1">
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase">Nome da Empresa</label>
