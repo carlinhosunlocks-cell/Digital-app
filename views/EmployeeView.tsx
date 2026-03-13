@@ -15,13 +15,15 @@ interface EmployeeViewProps {
   hrRequests: HRRequest[];
   onCreateReport: (report: ServiceReport) => void;
   onCreateHRRequest: (request: Partial<HRRequest>) => void;
+  onUpdateLocation?: (lat: number, lng: number) => void;
 }
 
-export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, hrRequests, onCreateReport, onCreateHRRequest }) => {
+export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, hrRequests, onCreateReport, onCreateHRRequest, onUpdateLocation }) => {
   const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock' | 'hr'>('route');
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<ServiceOrder | null>(null);
   const [myStock, setMyStock] = useState<TechnicianStockItem[]>([]);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
   
   // Load stock
   useEffect(() => {
@@ -35,6 +37,27 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
           fetchStock();
       }
   }, [activeTab, currentUser.id]);
+
+  // Real-time GPS Tracking
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        if (onUpdateLocation) {
+          onUpdateLocation(latitude, longitude);
+        }
+      },
+      (error) => {
+        console.error("Erro ao obter localização GPS:", error);
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [onUpdateLocation]);
 
   // Report Form State
   const [reportForm, setReportForm] = useState({
@@ -215,7 +238,7 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
           <div className="space-y-6 animate-in slide-in-from-right duration-300">
             {/* Widget GPS */}
             <div className="relative rounded-[2rem] overflow-hidden shadow-2xl border border-white/10 group">
-              <MapVisualizer orders={myOrders} onNavigate={handleNavigate} height="h-56" className="bg-slate-900" />
+              <MapVisualizer orders={myOrders} onNavigate={handleNavigate} height="h-56" className="bg-slate-900" currentLocation={currentLocation} />
               <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-white/10 flex justify-between items-center">
                  <div>
                     <p className="text-[10px] text-white/60 uppercase font-bold">Próximo Destino</p>

@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
 import { MapPin, Navigation2, Crosshair, ExternalLink, Zap } from 'lucide-react';
-import { ServiceOrder, OrderStatus } from '../types';
+import { User, ServiceOrder, OrderStatus } from '../types';
 
 interface MapVisualizerProps {
   orders: ServiceOrder[];
   onNavigate: (order: ServiceOrder) => void;
   height?: string;
   className?: string;
+  currentLocation?: { lat: number, lng: number } | null;
+  employees?: User[];
 }
 
 // Helper to calculate distance between two points
@@ -14,11 +16,11 @@ const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => 
   return Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lng2 - lng1, 2));
 };
 
-const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, height = "h-64", className = "" }) => {
+const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, height = "h-64", className = "", currentLocation, employees = [] }) => {
   // 1. Route Logic: Sort orders to create a logical path (Simple Nearest Neighbor simulation)
   // We assume a starting point (e.g., Office/Central SP) if needed, or just start with the first order.
   const sortedOrders = useMemo(() => {
-    if (orders.length <= 1) return orders;
+    if (orders.length === 0) return [];
     
     // Clone to not mutate original
     const pending = orders.filter(o => o.status !== OrderStatus.COMPLETED);
@@ -28,19 +30,18 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, heigh
     const sortedPending: ServiceOrder[] = [];
     let currentPool = [...pending];
     
-    // Start with the top-most order in the list (or current location in a real app)
+    // Start with current location if available, else the first pending order
     if (currentPool.length > 0) {
-      let current = currentPool[0];
-      sortedPending.push(current);
-      currentPool = currentPool.filter(o => o.id !== current.id);
+      let currentLat = currentLocation?.lat ?? currentPool[0].lat;
+      let currentLng = currentLocation?.lng ?? currentPool[0].lng;
 
       while (currentPool.length > 0) {
         // Find nearest to current
         let nearest = currentPool[0];
-        let minDist = getDistance(current.lat, current.lng, nearest.lat, nearest.lng);
+        let minDist = getDistance(currentLat, currentLng, nearest.lat, nearest.lng);
 
         for (let i = 1; i < currentPool.length; i++) {
-          const dist = getDistance(current.lat, current.lng, currentPool[i].lat, currentPool[i].lng);
+          const dist = getDistance(currentLat, currentLng, currentPool[i].lat, currentPool[i].lng);
           if (dist < minDist) {
             minDist = dist;
             nearest = currentPool[i];
@@ -48,20 +49,33 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, heigh
         }
         
         sortedPending.push(nearest);
-        current = nearest;
+        currentLat = nearest.lat;
+        currentLng = nearest.lng;
         currentPool = currentPool.filter(o => o.id !== nearest.id);
       }
     }
 
     return [...completed, ...sortedPending];
-  }, [orders]);
+  }, [orders, currentLocation]);
 
   // 2. Normalization Logic: Fit points into the container 0-100%
-  const { normalizedPoints, boundingBox } = useMemo(() => {
-    if (orders.length === 0) return { normalizedPoints: [], boundingBox: null };
+  const { normalizedPoints, boundingBox, normalizedCurrentLocation, normalizedEmployees } = useMemo(() => {
+    if (orders.length === 0 && !currentLocation && employees.length === 0) return { normalizedPoints: [], boundingBox: null, normalizedCurrentLocation: null, normalizedEmployees: [] };
 
     const lats = orders.map(o => o.lat);
     const lngs = orders.map(o => o.lng);
+    
+    if (currentLocation) {
+      lats.push(currentLocation.lat);
+      lngs.push(currentLocation.lng);
+    }
+
+    employees.forEach(emp => {
+      if (emp.lat && emp.lng) {
+        lats.push(emp.lat);
+        lngs.push(emp.lng);
+      }
+    });
     
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
@@ -83,30 +97,56 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, heigh
       return { ...order, x, y, sequenceIndex: index + 1 };
     });
 
+    let normCurrent = null;
+    if (currentLocation) {
+        const y = ((maxLat + latBuffer) - currentLocation.lat) / latRange * 100;
+        const x = (currentLocation.lng - (minLng - lngBuffer)) / lngRange * 100;
+        normCurrent = { x, y };
+    }
+
+    const normEmployees = employees.filter(e => e.lat && e.lng).map(emp => {
+      const y = ((maxLat + latBuffer) - emp.lat!) / latRange * 100;
+      const x = (emp.lng! - (minLng - lngBuffer)) / lngRange * 100;
+      return { ...emp, x, y };
+    });
+
     return { 
       normalizedPoints: points, 
-      boundingBox: { minLat, maxLat, minLng, maxLng } 
+      boundingBox: { minLat, maxLat, minLng, maxLng },
+      normalizedCurrentLocation: normCurrent,
+      normalizedEmployees: normEmployees
     };
-  }, [orders, sortedOrders]);
+  }, [orders, sortedOrders, currentLocation, employees]);
 
   // 3. Generate SVG Path
   const routePath = useMemo(() => {
-    if (normalizedPoints.length < 2) return '';
+    if (normalizedPoints.length === 0) return '';
+    
+    let pathString = '';
+    
+    if (normalizedCurrentLocation && normalizedPoints.length > 0) {
+        pathString = `M ${normalizedCurrentLocation.x},${normalizedCurrentLocation.y} L `;
+    } else if (normalizedPoints.length > 0) {
+        pathString = `M `;
+    }
+    
     const points = normalizedPoints.map(p => `${p.x},${p.y}`).join(' L ');
-    return `M ${points}`;
-  }, [normalizedPoints]);
+    return pathString + points;
+  }, [normalizedPoints, normalizedCurrentLocation]);
 
   // 4. Generate Google Maps Deep Link
   const handleOpenGoogleMaps = () => {
     if (sortedOrders.length === 0) return;
     
     // Format: https://www.google.com/maps/dir/Origin/Waypoint1/Waypoint2/Destination
-    // We'll use the first order as origin for simplicity in this demo, or current location
     const baseUrl = "https://www.google.com/maps/dir/";
-    const waypoints = sortedOrders
-      .filter(o => o.status !== OrderStatus.COMPLETED)
-      .map(o => `${o.lat},${o.lng}`)
-      .join('/');
+    const pendingOrders = sortedOrders.filter(o => o.status !== OrderStatus.COMPLETED);
+    
+    let waypoints = pendingOrders.map(o => `${o.lat},${o.lng}`).join('/');
+    
+    if (currentLocation) {
+        waypoints = `${currentLocation.lat},${currentLocation.lng}/${waypoints}`;
+    }
 
     if (!waypoints) return;
 
@@ -146,6 +186,15 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, heigh
         </div>
 
         {/* Dynamic SVG Route Line */}
+        <style>
+          {`
+            @keyframes dash {
+              to {
+                stroke-dashoffset: -100;
+              }
+            }
+          `}
+        </style>
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" style={{ filter: 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.5))' }}>
           <defs>
             <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -163,9 +212,46 @@ const MapVisualizer: React.FC<MapVisualizerProps> = ({ orders, onNavigate, heigh
             fill="none" 
             strokeLinecap="round" 
             strokeDasharray="6 4"
-            className="animate-[dash_20s_linear_infinite]"
+            style={{ animation: 'dash 20s linear infinite' }}
           />
         </svg>
+
+        {/* Current Location Pin */}
+        {normalizedCurrentLocation && (
+          <div 
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 z-30"
+            style={{ left: `${normalizedCurrentLocation.x}%`, top: `${normalizedCurrentLocation.y}%` }}
+          >
+            <div className="relative flex flex-col items-center">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-50 animate-ping duration-1000"></span>
+              <div className="relative p-2 rounded-full border-2 bg-green-500 border-white shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                <div className="w-3 h-3 bg-white rounded-full"></div>
+              </div>
+              <div className="absolute top-8 bg-slate-900/95 backdrop-blur-md text-white px-2 py-1 rounded-lg text-[10px] font-bold shadow-xl border border-slate-700 whitespace-nowrap">
+                Você está aqui
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Employee Pins */}
+        {normalizedEmployees?.map((emp) => (
+          <div 
+            key={emp.id}
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 z-25 transition-all hover:scale-110 hover:z-30 cursor-pointer"
+            style={{ left: `${emp.x}%`, top: `${emp.y}%` }}
+          >
+            <div className="relative group/emp flex flex-col items-center">
+              <div className="relative p-1.5 rounded-full border-2 bg-purple-500 border-white shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                <div className="w-3 h-3 bg-white rounded-full"></div>
+              </div>
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white p-2 rounded-xl shadow-2xl border border-slate-700 w-32 hidden group-hover/emp:block z-50 animate-in fade-in slide-in-from-top-2 duration-200 text-center">
+                <p className="font-bold text-xs truncate">{emp.name}</p>
+                <p className="opacity-70 text-[10px] uppercase tracking-wider">Técnico</p>
+              </div>
+            </div>
+          </div>
+        ))}
 
         {/* Pins */}
         {normalizedPoints.map((point) => {

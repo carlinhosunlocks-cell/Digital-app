@@ -320,6 +320,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateLocation = async (lat: number, lng: number) => {
+    if (currentUser && currentUser.id) {
+      try {
+        await apiService.updateUserLocation(currentUser.id, lat, lng);
+      } catch (error) {
+        console.error("Erro ao atualizar localização", error);
+      }
+    }
+  };
+
   const handleCreateTicket = async (ticket: Omit<Ticket, 'id' | 'createdAt' | 'messages'>) => {
     try {
       await apiService.saveTicket(ticket as any);
@@ -481,6 +491,7 @@ const App: React.FC = () => {
             onCreateReport={handleCreateReport}
             hrRequests={hrRequests}
             onCreateHRRequest={handleCreateHRRequest}
+            onUpdateLocation={handleUpdateLocation}
           />
         )}
 

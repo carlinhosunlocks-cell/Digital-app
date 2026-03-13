@@ -38,7 +38,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
-          ((request.auth.token.email == "amandamartins8901@gmail.com" || request.auth.token.email == "admin@admin.com") && request.auth.token.email_verified == true));
+          (request.auth.token.email == "amandamartins8901@gmail.com" || request.auth.token.email == "admin@admin.com"));
     }
 
     function isOwner(userId) {
@@ -70,7 +70,7 @@ service cloud.firestore {
     // ===============================================================
     
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['name', 'role', 'email', 'avatar', 'status', 'department', 'position', 'salary', 'hireDate']) &&
+      return hasOnlyAllowedFields(['name', 'role', 'email', 'avatar', 'status', 'department', 'position', 'salary', 'hireDate', 'lat', 'lng']) &&
              isValidString(data.name, 100) &&
              data.role in ['ADMIN', 'EMPLOYEE', 'CLIENT'] &&
              isValidEmail(data.email) &&
@@ -79,7 +79,9 @@ service cloud.firestore {
              (!('department' in data) || isValidString(data.department, 100)) &&
              (!('position' in data) || isValidString(data.position, 100)) &&
              (!('salary' in data) || data.salary is number) &&
-             (!('hireDate' in data) || isValidString(data.hireDate, 50));
+             (!('hireDate' in data) || isValidString(data.hireDate, 50)) &&
+             (!('lat' in data) || data.lat is number) &&
+             (!('lng' in data) || data.lng is number);
     }
 
     function isValidOrder(data) {

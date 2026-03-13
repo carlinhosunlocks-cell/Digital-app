@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, FileText, Settings, Plus, 
   Map as MapIcon, CheckCircle, AlertTriangle, MessageSquare, 
   Search, Bell, X, Filter, Clock, Briefcase, 
-  Printer, TrendingUp, Calendar, DollarSign, Send, UserPlus, Check, XCircle, Pencil, Power, User as UserIcon, Shield, Trash2, Download, CreditCard, Activity, FileSpreadsheet, Package, LayoutTemplate, List, Calendar as CalendarIcon
+  Printer, TrendingUp, Calendar, DollarSign, Send, UserPlus, Check, XCircle, Pencil, Power, User as UserIcon, Shield, Trash2, Download, CreditCard, Activity, FileSpreadsheet, Package, LayoutTemplate, List, Calendar as CalendarIcon, MapPin
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, Tooltip } from 'recharts';
 import { User, ServiceOrder, TimeRecord, Ticket, OrderStatus, TicketStatus, Role, ServiceReport, AuditLog, Notification, Subscription, Invoice, InventoryItem, HRRequest, HRRequestStatus } from '../types';
@@ -14,6 +14,27 @@ import CalendarScheduler from '../components/CalendarScheduler';
 import InventoryManager from '../components/InventoryManager';
 import { apiService } from '../services/parseService';
 import { printReport } from '../utils/printUtils';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix Leaflet icon issue
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+function LocationPicker({ position, setPosition }: { position: {lat: number, lng: number}, setPosition: (pos: {lat: number, lng: number}) => void }) {
+  useMapEvents({
+    click(e) {
+      setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+
+  return position ? <Marker position={position} /> : null;
+}
 
 interface AdminViewProps {
   orders: ServiceOrder[];
@@ -206,7 +227,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const handleOrderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newOrder: ServiceOrder = {
-      id: Date.now().toString(),
+      id: '',
       ...orderForm,
       status: OrderStatus.PENDING,
       date: new Date().toISOString().split('T')[0]
@@ -491,7 +512,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
                     {orderViewMode === 'calendar' && <CalendarScheduler orders={orders} employees={employees} onDateChange={() => {}} />}
                     {orderViewMode === 'map' && (
                         <div className="bg-white rounded-[2.5rem] overflow-hidden border border-slate-200 shadow-xl relative h-full">
-                            <MapVisualizer orders={orders} onNavigate={() => {}} height="h-full" />
+                            <MapVisualizer orders={orders} employees={employees.filter(e => e.role === 'EMPLOYEE')} onNavigate={() => {}} height="h-full" />
                         </div>
                     )}
                 </div>
@@ -962,6 +983,22 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             ))}
                          </select>
                       </div>
+                  </div>
+
+                  <div className="space-y-1">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1">
+                       <MapPin size={12} /> Localização no Mapa
+                     </label>
+                     <p className="text-xs text-slate-500 mb-2">Clique no mapa para definir o local exato do serviço.</p>
+                     <div className="h-48 rounded-2xl overflow-hidden border border-slate-200">
+                       <MapContainer center={[-23.5505, -46.6333]} zoom={11} style={{ height: '100%', width: '100%' }}>
+                         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                         <LocationPicker 
+                           position={{ lat: orderForm.lat, lng: orderForm.lng }} 
+                           setPosition={(pos) => setOrderForm({ ...orderForm, lat: pos.lat, lng: pos.lng })} 
+                         />
+                       </MapContainer>
+                     </div>
                   </div>
 
                   <button type="submit" className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-xl hover:bg-black transition-all mt-4 uppercase text-xs tracking-widest">

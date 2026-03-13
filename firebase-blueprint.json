@@ -14,7 +14,9 @@
         "department": { "type": "string" },
         "position": { "type": "string" },
         "salary": { "type": "number" },
-        "hireDate": { "type": "string", "format": "date" }
+        "hireDate": { "type": "string", "format": "date" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
       },
       "required": ["name", "role", "email"]
     },

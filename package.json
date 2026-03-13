@@ -11,13 +11,16 @@
   },
   "dependencies": {
     "@google/genai": "^1.31.0",
+    "@types/leaflet": "^1.9.21",
     "firebase": "^12.10.0",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.460.0",
     "parse": "^5.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0",
     "recharts": "^2.15.0"
   },
   "devDependencies": {

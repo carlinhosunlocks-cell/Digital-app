@@ -31,6 +31,8 @@ export interface User {
   position?: string;
   salary?: number;
   hireDate?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface ServiceOrder {

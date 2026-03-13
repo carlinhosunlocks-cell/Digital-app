@@ -215,6 +215,15 @@ export const apiService = {
     }
   },
 
+  async updateUserLocation(id: string, lat: number, lng: number): Promise<void> {
+    try {
+      const userRef = doc(db, 'users', id);
+      await updateDoc(userRef, { lat, lng });
+    } catch (error) {
+      console.error("Failed to update location:", error);
+    }
+  },
+
   async saveUser(userData: Partial<User> & { password?: string }): Promise<User> {
     try {
       const id = userData.id || auth.currentUser?.uid;
@@ -254,15 +263,16 @@ export const apiService = {
   async saveOrder(orderData: Partial<ServiceOrder>): Promise<ServiceOrder> {
     try {
       let result: ServiceOrder;
+      const data = { ...orderData };
+      delete data.id;
+
       if (orderData.id) {
         const orderRef = doc(db, 'orders', orderData.id);
-        const data = { ...orderData };
-        delete data.id;
         await updateDoc(orderRef, data);
         result = { ...orderData } as ServiceOrder;
       } else {
-        const docRef = await addDoc(collection(db, 'orders'), orderData);
-        result = { id: docRef.id, ...orderData } as ServiceOrder;
+        const docRef = await addDoc(collection(db, 'orders'), data);
+        result = { id: docRef.id, ...data } as ServiceOrder;
       }
 
       await this.createAuditLog({
@@ -399,11 +409,13 @@ export const apiService = {
 
   async saveReport(reportData: Partial<ServiceReport>): Promise<ServiceReport> {
     try {
+      const data = { ...reportData };
+      delete data.id;
       const docRef = await addDoc(collection(db, 'reports'), {
-        ...reportData,
+        ...data,
         date: new Date().toISOString()
       });
-      return { id: docRef.id, ...reportData } as ServiceReport;
+      return { id: docRef.id, ...data } as ServiceReport;
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'reports');
       throw error;
@@ -422,11 +434,13 @@ export const apiService = {
 
   async saveTimeRecord(recordData: Partial<TimeRecord>): Promise<TimeRecord> {
     try {
+      const data = { ...recordData };
+      delete data.id;
       const docRef = await addDoc(collection(db, 'timeRecords'), {
-        ...recordData,
+        ...data,
         timestamp: new Date().toISOString()
       });
-      const result = { id: docRef.id, ...recordData } as TimeRecord;
+      const result = { id: docRef.id, ...data } as TimeRecord;
       
       await this.createAuditLog({
         action: 'CREATE_TIME_RECORD',
