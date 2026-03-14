@@ -550,29 +550,25 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
                     {/* Checklist */}
                     <div className="space-y-3">
                        <p className="text-xs text-white/40 uppercase font-bold pl-2">Checklist de Sistemas</p>
-                       {[
+                       {([] as { id: keyof typeof reportForm, label: string }[]).concat([
                           { id: 'gate', label: 'Portão Automático' },
                           { id: 'cctv', label: 'Sistema CFTV' },
                           { id: 'intercom', label: 'Interfonia' },
                           { id: 'lock', label: 'Fechaduras Eletroímã' },
                           { id: 'preventive', label: 'Manutenção Preventiva' },
-                       ].map((item) => (
+                       ]).map((item) => (
                           <label key={item.id} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl active:bg-white/10 transition">
                              <span className="text-sm font-medium text-white">{item.label}</span>
                              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                                // @ts-ignore
-                                reportForm[item.id as keyof typeof reportForm] ? 'bg-blue-600 border-blue-600' : 'border-white/30'
+                                reportForm[item.id] ? 'bg-blue-600 border-blue-600' : 'border-white/30'
                              }`}>
                                 <input 
                                   type="checkbox" 
                                   className="hidden"
-                                  // @ts-ignore
-                                  checked={reportForm[item.id as keyof typeof reportForm]}
-                                  // @ts-ignore
+                                  checked={!!reportForm[item.id]}
                                   onChange={e => setReportForm({...reportForm, [item.id]: e.target.checked})}
                                 />
-                                {/* @ts-ignore */}
-                                {reportForm[item.id as keyof typeof reportForm] && <Check size={14} className="text-white" />}
+                                {reportForm[item.id] && <Check size={14} className="text-white" />}
                              </div>
                           </label>
                        ))}
@@ -681,16 +677,15 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
       {/* Floating Dock Navigation */}
       <nav className="fixed bottom-6 left-6 right-6 z-50">
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[2rem] p-2 flex justify-between items-center shadow-2xl">
-          {[
+          {([] as { id: 'route' | 'clock' | 'report' | 'stock' | 'hr', icon: any, label: string }[]).concat([
             { id: 'route', icon: Navigation, label: 'Rota' },
             { id: 'clock', icon: Clock, label: 'Ponto' },
             { id: 'stock', icon: Package, label: 'Estoque' },
             { id: 'hr', icon: Briefcase, label: 'RH' },
             { id: 'report', icon: FileText, label: 'Relatório' }
-          ].map(item => (
+          ]).map(item => (
             <button 
               key={item.id}
-              // @ts-ignore
               onClick={() => setActiveTab(item.id)}
               className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-[1.5rem] transition-all duration-300 relative overflow-hidden ${
                 activeTab === item.id 
