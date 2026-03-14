@@ -9,9 +9,7 @@ import {
   XCircle,
   ArrowRight
 } from 'lucide-react';
-import { auth } from './firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { apiService } from './services/parseService';
+import { apiService } from './services/apiService';
 import { User, ServiceOrder, Ticket, TimeRecord, ServiceReport, OrderStatus, TicketStatus, Notification, HRRequest } from './types';
 import { AdminView } from './views/AdminView';
 import { EmployeeView } from './views/EmployeeView';
@@ -88,6 +86,16 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+
+  const refreshSettings = async () => {
+    try {
+      const appSettings = await apiService.getSettings();
+      setSettings(appSettings);
+    } catch (error) {
+      console.error("Error refreshing settings:", error);
+    }
+  };
 
   // Data States
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
@@ -112,23 +120,27 @@ const App: React.FC = () => {
     // Test connection on boot
     apiService.testConnection();
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        try {
-          const userData = await apiService.getCurrentUser(firebaseUser.uid);
-          if (userData) {
-            setCurrentUser(userData);
-          }
-        } catch (error) {
-          console.error("Error fetching user data:", error);
+    const checkAuth = async () => {
+      try {
+        const user = await apiService.getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+        } else {
+          setCurrentUser(null);
         }
-      } else {
+        
+        // Load settings
+        const appSettings = await apiService.getSettings();
+        setSettings(appSettings);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
         setCurrentUser(null);
+      } finally {
+        setInitialLoading(false);
       }
-      setInitialLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    checkAuth();
   }, []);
 
   // Real-time Subscriptions
@@ -178,7 +190,7 @@ const App: React.FC = () => {
   const handleGoogleLogin = async () => {
     try {
       setAuthLoading(true);
-      const user = await apiService.loginWithGoogle();
+      const user = await apiService.loginWithGoogle('user@gmail.com', 'Google User');
       setCurrentUser(user);
       addToast("Bem-vindo de volta!");
     } catch (error: any) {
@@ -356,7 +368,11 @@ const App: React.FC = () => {
           <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
           
           <div className="text-center mb-10">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-blue-200 mb-6">D</div>
+            {settings?.logoUrl ? (
+              <img src={settings.logoUrl} alt="Logo" className="w-24 h-24 mx-auto rounded-2xl object-cover shadow-xl shadow-blue-200 mb-6" />
+            ) : (
+              <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white font-black text-3xl shadow-xl shadow-blue-200 mb-6">D</div>
+            )}
             <h1 className="text-3xl font-black text-slate-800 tracking-tight">Digital Equipamentos</h1>
             <p className="text-slate-400 font-medium mt-2">Acesse sua conta corporativa</p>
           </div>
@@ -472,6 +488,8 @@ const App: React.FC = () => {
             reports={reports}
             notifications={notifications}
             currentUser={currentUser}
+            settings={settings}
+            onSettingsUpdate={refreshSettings}
             onCreateOrder={handleCreateOrder}
             onUpdateTicketStatus={handleUpdateTicketStatus}
             onReplyTicket={handleReplyTicket}
@@ -484,6 +502,7 @@ const App: React.FC = () => {
           <EmployeeView 
             currentUser={currentUser}
             orders={orders}
+            settings={settings}
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onClockAction={handleClockAction}
             timeRecords={timeRecords}
@@ -500,6 +519,7 @@ const App: React.FC = () => {
             currentUser={currentUser}
             tickets={tickets}
             reports={reports}
+            settings={settings}
             onCreateTicket={handleCreateTicket}
           />
         )}

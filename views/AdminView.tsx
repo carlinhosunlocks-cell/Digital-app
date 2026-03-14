@@ -1,7 +1,5 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebase';
 import { 
   LayoutDashboard, Users, FileText, Settings, Plus, 
   Map as MapIcon, CheckCircle, AlertTriangle, MessageSquare, 
@@ -14,7 +12,7 @@ import MapVisualizer from '../components/MapVisualizer';
 import KanbanBoard from '../components/KanbanBoard';
 import CalendarScheduler from '../components/CalendarScheduler';
 import InventoryManager from '../components/InventoryManager';
-import { apiService } from '../services/parseService';
+import { apiService } from '../services/apiService';
 import { printReport } from '../utils/printUtils';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -47,6 +45,8 @@ interface AdminViewProps {
   reports: ServiceReport[];
   notifications: Notification[];
   currentUser: User;
+  settings: any;
+  onSettingsUpdate: () => void;
   onCreateOrder: (order: ServiceOrder) => void;
   onUpdateTicketStatus: (ticketId: string, status: TicketStatus) => void;
   onReplyTicket: (ticketId: string, message: string) => void;
@@ -68,23 +68,43 @@ const Card: React.FC<{ title?: string; children: React.ReactNode; className?: st
 
 export const AdminView: React.FC<AdminViewProps> = ({ 
   orders, employees, timeRecords, tickets, hrRequests, reports, notifications, currentUser,
+  settings, onSettingsUpdate,
   onCreateOrder, onUpdateTicketStatus, onReplyTicket, onSaveEmployee,
   addToast
 }) => {
   const [activeTab, setActiveTab] = useState<'dash' | 'orders' | 'users' | 'inventory' | 'reports' | 'support' | 'hr' | 'settings' | 'audit'>('dash');
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(settings?.logoUrl || null);
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    
+    if (!currentUser) {
+        addToast('Você precisa estar logado para fazer upload da logo.', 'error');
+        return;
+    }
 
-    const storageRef = ref(storage, 'logos/company-logo');
     try {
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      setLogoUrl(url);
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const response = await fetch('/api/upload-logo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload logo');
+      }
+
+      const data = await response.json();
+      setLogoUrl(data.url);
+      await apiService.saveSettings({ logoUrl: data.url });
+      onSettingsUpdate();
+      addToast('Logo atualizada com sucesso!', 'success');
     } catch (error) {
       console.error('Error uploading logo:', error);
+      addToast('Erro ao fazer upload da logo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), 'error');
     }
   };
   
@@ -112,10 +132,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
         const sub = await apiService.getSubscription();
         const inv = await apiService.getInvoices();
         const items = await apiService.getInventory();
+        const settings = await apiService.getSettings();
         setAuditLogs(logs);
         setSubscription(sub);
         setInvoices(inv);
         setInventory(items);
+        if (settings?.logoUrl) {
+          setLogoUrl(settings.logoUrl);
+        }
     };
     // Re-fetch when switching tabs to keep data fresh
     loadSaaSData();
@@ -281,7 +305,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {/* Sidebar */}
       <aside className="w-20 lg:w-72 bg-white border-r border-slate-200 flex flex-col z-30 transition-all duration-300">
         <div className="p-8 flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">D</div>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-blue-500/20" />
+          ) : (
+            <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">D</div>
+          )}
           <div className="hidden lg:block">
             <h1 className="text-slate-900 font-bold text-lg leading-none">Digital</h1>
             <span className="text-[10px] text-blue-600 font-bold tracking-widest uppercase">Equipamentos</span>

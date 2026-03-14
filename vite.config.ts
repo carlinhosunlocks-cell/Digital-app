@@ -8,5 +8,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'lucide-react'],
+          charts: ['recharts'],
+          maps: ['leaflet', 'react-leaflet']
+        }
+      }
+    }
   }
 });

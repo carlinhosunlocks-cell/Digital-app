@@ -3,11 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, Check, Navigation, Menu, FileText, Camera, PenTool, Calendar, X, ChevronRight, Upload, CheckCircle, Package, Minus, Plus, Bell, Briefcase } from 'lucide-react';
 import { User, ServiceOrder, TimeRecord, OrderStatus, ServiceReport, TechnicianStockItem, Notification, HRRequest, HRRequestStatus } from '../types';
 import MapVisualizer from '../components/MapVisualizer';
-import { apiService } from '../services/parseService';
+import { apiService } from '../services/apiService';
 
 interface EmployeeViewProps {
   currentUser: User;
   orders: ServiceOrder[];
+  settings: any;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
   onClockAction: (type: 'CLOCK_IN' | 'CLOCK_OUT') => void;
   timeRecords: TimeRecord[];
@@ -18,7 +19,7 @@ interface EmployeeViewProps {
   onUpdateLocation?: (lat: number, lng: number) => void;
 }
 
-export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, onUpdateOrderStatus, onClockAction, timeRecords, notifications, hrRequests, onCreateReport, onCreateHRRequest, onUpdateLocation }) => {
+export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders, settings, onUpdateOrderStatus, onClockAction, timeRecords, notifications, hrRequests, onCreateReport, onCreateHRRequest, onUpdateLocation }) => {
   const [activeTab, setActiveTab] = useState<'route' | 'clock' | 'report' | 'stock' | 'hr'>('route');
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<ServiceOrder | null>(null);
   const [myStock, setMyStock] = useState<TechnicianStockItem[]>([]);
@@ -196,7 +197,14 @@ export const EmployeeView: React.FC<EmployeeViewProps> = ({ currentUser, orders,
            </div>
            <div>
              <h1 className="text-sm font-bold text-white leading-none mb-1">Olá, {currentUser.name.split(' ')[0]}</h1>
-             <p className="text-[10px] text-white/50 uppercase tracking-wide">Digital Field App</p>
+              {settings?.logoUrl ? (
+                <div className="flex items-center gap-1">
+                  <img src={settings.logoUrl} alt="Logo" className="w-4 h-4 object-contain" />
+                  <p className="text-[10px] text-white/50 uppercase tracking-wide">Digital Field App</p>
+                </div>
+              ) : (
+                <p className="text-[10px] text-white/50 uppercase tracking-wide">Digital Field App</p>
+              )}
            </div>
         </div>
         <div className="relative">

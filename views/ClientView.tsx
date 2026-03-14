@@ -8,6 +8,7 @@ interface ClientViewProps {
   currentUser: User;
   tickets: Ticket[];
   reports: ServiceReport[];
+  settings: any;
   onCreateTicket: (ticket: Omit<Ticket, 'id' | 'createdAt' | 'messages'>) => void;
 }
 
@@ -17,7 +18,7 @@ const SERVICES_SLIDES = [
   { id: 3, title: 'Segurança Digital', img: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80', desc: 'Monitoramento e proteção contra ameaças.' },
 ];
 
-export const ClientView: React.FC<ClientViewProps> = ({ currentUser, tickets, reports, onCreateTicket }) => {
+export const ClientView: React.FC<ClientViewProps> = ({ currentUser, tickets, reports, settings, onCreateTicket }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'support' | 'reports'>('home');
   const [currentSlide, setCurrentSlide] = useState(0);
   
@@ -66,7 +67,11 @@ export const ClientView: React.FC<ClientViewProps> = ({ currentUser, tickets, re
       <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
           <div className="flex items-center gap-2">
-             <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center text-white font-bold text-xl">D</div>
+             {settings?.logoUrl ? (
+               <img src={settings.logoUrl} alt="Logo" className="w-10 h-10 rounded-xl object-cover" />
+             ) : (
+               <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center text-white font-bold text-xl">D</div>
+             )}
              <span className="text-xl font-bold text-black tracking-tight">Digital<span className="text-gray-400">Equipamentos</span></span>
           </div>
           <div className="flex space-x-2 bg-gray-100/50 p-1.5 rounded-full backdrop-blur-md">
