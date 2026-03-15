@@ -5,7 +5,7 @@ import { ChatMessage } from "../types";
 // Helper to get response from Gemini
 export const getGeminiChatResponse = async (history: ChatMessage[], newMessage: string): Promise<string> => {
   try {
-    const apiKey = process.env.API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("API Key not found");
 
     const ai = new GoogleGenAI({ apiKey });
