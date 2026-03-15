@@ -338,6 +338,11 @@ export const apiService = {
   },
 
   async testConnection() {
-    console.log("AWS Backend Connection Ready");
+    try {
+      await fetchApi('/settings');
+      console.log("AWS Backend Connection Ready");
+    } catch (error) {
+      console.error("AWS Backend Connection Failed:", error);
+    }
   }
 };

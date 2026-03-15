@@ -14,10 +14,10 @@ async function startServer() {
   const PORT = 3000;
 
   // Security and Performance Middleware
-  app.use(helmet({
-    contentSecurityPolicy: false, // Disabled for Vite development and inline scripts
-    crossOriginEmbedderPolicy: false,
-  }));
+  // app.use(helmet({
+  //   contentSecurityPolicy: false, 
+  //   crossOriginEmbedderPolicy: false,
+  // }));
   app.use(compression());
   app.use(cors());
   app.use(express.json({ limit: '50mb' })); // Increased limit for large payloads
