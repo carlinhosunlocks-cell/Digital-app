@@ -5,10 +5,11 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let region = (process.env.AWS_REGION || "us-east-1").trim();
+let regionEnv = process.env.AWS_REGION?.trim();
+let region: string | undefined = regionEnv;
 
 // Correct common misconfiguration where AZ ID (e.g., use2-az1) is used instead of Region (e.g., us-east-2)
-if (region.match(/^[a-z]{2,3}[0-9]-az[0-9]$/)) {
+if (region && region.match(/^[a-z]{2,3}[0-9]-az[0-9]$/)) {
   const mapping: Record<string, string> = {
     'use1': 'us-east-1',
     'use2': 'us-east-2',
@@ -29,16 +30,16 @@ if (region.match(/^[a-z]{2,3}[0-9]-az[0-9]$/)) {
   }
 }
 
-// Create DynamoDB Client (Credentials automatically resolved via IAM/Environment)
+// Create DynamoDB Client (Credentials and Region automatically resolved via IAM/Environment if not provided)
 const ddbClient = new DynamoDBClient({
-  region,
+  ...(region ? { region } : {}),
 });
 
 export const docClient = DynamoDBDocumentClient.from(ddbClient);
 
-// Create S3 Client (Credentials automatically resolved via IAM/Environment)
+// Create S3 Client (Credentials and Region automatically resolved via IAM/Environment if not provided)
 export const s3Client = new S3Client({
-  region,
+  ...(region ? { region } : {}),
 });
 
 export const S3_BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || "my-app-bucket";
