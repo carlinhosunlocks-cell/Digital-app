@@ -5,7 +5,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let regionEnv = process.env.AWS_REGION?.trim();
+const regionEnv = process.env.AWS_REGION?.trim();
+console.log('🔍 AWS_REGION detected in environment:', regionEnv || 'Not found (will use SDK default)');
+
 let region: string | undefined = regionEnv;
 
 // Correct common misconfiguration where AZ ID (e.g., use2-az1) is used instead of Region (e.g., us-east-2)
