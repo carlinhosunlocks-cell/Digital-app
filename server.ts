@@ -5,10 +5,12 @@ import helmet from "helmet";
 import compression from "compression";
 import path from "path";
 import { apiRouter } from "./server/api";
+import { initDb } from "./server/db";
 
 dotenv.config();
 
 async function startServer() {
+  await initDb();
   const app = express();
   const PORT = 3000;
 

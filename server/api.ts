@@ -1,17 +1,15 @@
 import express from "express";
-import { docClient, S3_BUCKET_NAME, s3Client } from "./aws";
-import { PutCommand, ScanCommand, GetCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
-import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { pool } from "./db";
 import multer from "multer";
 import crypto from "crypto";
+import { S3_BUCKET_NAME, s3Client } from "./aws";
+import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const apiRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- MOCK DATA FALLBACK FOR PREVIEW ENVIRONMENT ---
-// Since we don't have real AWS credentials in the preview, we will use an in-memory store
-// if the AWS calls fail, so the app doesn't crash completely.
+// Helper to handle PostgreSQL vs Mock (if DB is not configured)
 const mockDb: Record<string, any[]> = {
   users: [],
   orders: [],
@@ -27,77 +25,32 @@ const mockDb: Record<string, any[]> = {
   settings: []
 };
 
-// Helper to handle DynamoDB vs Mock
-function isAwsConfigured() {
-  const key = process.env.AWS_ACCESS_KEY_ID?.trim();
-  const secret = process.env.AWS_SECRET_ACCESS_KEY?.trim();
-  
-  const isPlaceholder = (val?: string) => 
-    !val || 
-    val === '' || 
-    val === 'mock-key' || 
-    val === 'mock-secret' || 
-    val === 'undefined' || 
-    val === 'null' ||
-    val.startsWith('YOUR_');
-
-  return !!(key && !isPlaceholder(key) && secret && !isPlaceholder(secret));
-}
-
 async function scanTable(tableName: string) {
   try {
-    if (isAwsConfigured()) {
-      let items: any[] = [];
-      let lastEvaluatedKey: any = undefined;
-      
-      do {
-        const data = await docClient.send(new ScanCommand({ 
-          TableName: tableName,
-          ExclusiveStartKey: lastEvaluatedKey
-        }));
-        if (data.Items) {
-          items = items.concat(data.Items);
-        }
-        lastEvaluatedKey = data.LastEvaluatedKey;
-      } while (lastEvaluatedKey);
-      
-      return items;
-    }
-    return mockDb[tableName] || [];
-  } catch (err: any) {
-    if (err.name === 'InvalidSignatureException') {
-      console.warn(`AWS Credentials for DynamoDB (${tableName}) are invalid. Falling back to mock data.`);
-    } else if (err.name === 'ResourceNotFoundException') {
-      console.warn(`DynamoDB Table '${tableName}' does not exist in your AWS account. Falling back to mock data.`);
-    } else {
-      console.warn(`DynamoDB Scan failed for ${tableName}, falling back to mock.`, err);
-    }
+    const result = await pool.query(
+      'SELECT data FROM documents WHERE collection_name = $1',
+      [tableName]
+    );
+    return result.rows.map(row => row.data);
+  } catch (err) {
+    console.error(`PostgreSQL Scan failed for ${tableName}, falling back to mock.`, err);
     return mockDb[tableName] || [];
   }
 }
 
 async function putItem(tableName: string, item: any) {
   try {
-    if (isAwsConfigured()) {
-      await docClient.send(new PutCommand({ TableName: tableName, Item: item }));
-      return item;
-    }
-    if (!mockDb[tableName]) mockDb[tableName] = [];
-    const existingIndex = mockDb[tableName].findIndex(i => i.id === item.id);
-    if (existingIndex >= 0) {
-      mockDb[tableName][existingIndex] = item;
-    } else {
-      mockDb[tableName].push(item);
-    }
+    await pool.query(
+      `INSERT INTO documents (collection_name, id, data, updated_at) 
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       ON CONFLICT (collection_name, id) 
+       DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP`,
+      [tableName, item.id, item]
+    );
     return item;
-  } catch (err: any) {
-    if (err.name === 'InvalidSignatureException') {
-      console.warn(`AWS Credentials for DynamoDB (${tableName}) are invalid. Falling back to mock data.`);
-    } else if (err.name === 'ResourceNotFoundException') {
-      console.warn(`DynamoDB Table '${tableName}' does not exist in your AWS account. Falling back to mock data.`);
-    } else {
-      console.warn(`DynamoDB Put failed for ${tableName}, falling back to mock.`, err);
-    }
+  } catch (err) {
+    console.error(`PostgreSQL Put failed for ${tableName}, falling back to mock.`, err);
+    
     if (!mockDb[tableName]) mockDb[tableName] = [];
     const existingIndex = mockDb[tableName].findIndex(i => i.id === item.id);
     if (existingIndex >= 0) {
@@ -168,34 +121,25 @@ apiRouter.post('/upload-logo', upload.single('logo'), async (req, res) => {
   const fileKey = `logos/company-logo-${Date.now()}-${req.file.originalname}`;
 
   try {
-    if (isAwsConfigured()) {
-      // Upload to S3
-      await s3Client.send(new PutObjectCommand({
-        Bucket: S3_BUCKET_NAME,
-        Key: fileKey,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
-      }));
+    // Upload to S3 (Credentials automatically resolved via IAM/Environment)
+    await s3Client.send(new PutObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: fileKey,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    }));
 
-      // Generate presigned URL (or construct public URL if bucket is public)
-      const url = await getSignedUrl(s3Client, new GetObjectCommand({
-        Bucket: S3_BUCKET_NAME,
-        Key: fileKey,
-      }), { expiresIn: 3600 }); // 1 hour
+    // Generate presigned URL (or construct public URL if bucket is public)
+    const url = await getSignedUrl(s3Client, new GetObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: fileKey,
+    }), { expiresIn: 3600 }); // 1 hour
 
-      res.json({ url });
-    } else {
-      // Mock upload
-      const mockUrl = `https://picsum.photos/seed/${Date.now()}/200/200`;
-      res.json({ url: mockUrl });
-    }
+    res.json({ url });
   } catch (error: any) {
-    if (error.name === 'InvalidSignatureException') {
-      console.warn('AWS Credentials for S3 are invalid. Falling back to mock logo.');
-      return res.json({ url: `https://picsum.photos/seed/${Date.now()}/200/200` });
-    }
-    console.error("S3 Upload Error:", error);
-    res.status(500).json({ error: 'Failed to upload file' });
+    console.warn('AWS S3 Upload failed (using mock fallback):', error.message);
+    const mockUrl = `https://picsum.photos/seed/${Date.now()}/200/200`;
+    res.json({ url: mockUrl });
   }
 });
 

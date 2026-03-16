@@ -29,27 +29,16 @@ if (region.match(/^[a-z]{2,3}[0-9]-az[0-9]$/)) {
   }
 }
 
-const accessKeyId = (process.env.AWS_ACCESS_KEY_ID || "mock-key").trim();
-const secretAccessKey = (process.env.AWS_SECRET_ACCESS_KEY || "mock-secret").trim();
-
-// Create DynamoDB Client
+// Create DynamoDB Client (Credentials automatically resolved via IAM/Environment)
 const ddbClient = new DynamoDBClient({
   region,
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
 });
 
 export const docClient = DynamoDBDocumentClient.from(ddbClient);
 
-// Create S3 Client
+// Create S3 Client (Credentials automatically resolved via IAM/Environment)
 export const s3Client = new S3Client({
   region,
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
 });
 
 export const S3_BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || "my-app-bucket";
