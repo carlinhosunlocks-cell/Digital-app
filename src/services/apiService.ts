@@ -83,8 +83,9 @@ export const apiService = {
     const user = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
     
     if (user) {
-      // Note: In a real production system, you would verify a hashed password here.
-      // For this migration, we are trusting the email if it exists in the database.
+      if (user.password && user.password !== password) {
+        throw new Error("Senha incorreta.");
+      }
       currentUser = user;
       localStorage.setItem('digital_equipamentos_user', JSON.stringify(user));
       return user;
@@ -96,6 +97,7 @@ export const apiService = {
         id: `admin-${Date.now()}`,
         name: 'Administrador',
         email: email,
+        password: password,
         role: 'ADMIN',
         status: 'active'
       };
@@ -105,7 +107,7 @@ export const apiService = {
       return adminUser;
     }
     
-    throw new Error("Usuário não encontrado ou senha incorreta.");
+    throw new Error("Usuário não encontrado.");
   },
 
   async registerWithEmail(userData: Partial<User> & { password?: string }): Promise<User> {
@@ -113,6 +115,7 @@ export const apiService = {
       id: `user-${Date.now()}`,
       name: userData.name || userData.email?.split('@')[0] || 'User',
       email: userData.email || '',
+      password: userData.password,
       role: userData.role || 'CLIENT',
       status: 'active',
       department: userData.department,
@@ -139,18 +142,30 @@ export const apiService = {
   },
 
   async updateUserLocation(id: string, lat: number, lng: number): Promise<void> {
+    const users = await this.getUsers();
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    
+    const updatedUser = { ...user, lat, lng };
+
     await fetchApi(`/users`, {
       method: 'POST',
-      body: JSON.stringify({ id, lat, lng })
+      body: JSON.stringify(updatedUser)
     });
   },
 
   async saveUser(userData: Partial<User> & { password?: string }): Promise<User> {
-    const data = { ...userData };
-    delete data.password;
+    let finalData = { ...userData };
+    if (userData.id) {
+      const users = await this.getUsers();
+      const existingUser = users.find(u => u.id === userData.id);
+      if (existingUser) {
+        finalData = { ...existingUser, ...finalData };
+      }
+    }
     return fetchApi('/users', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -159,9 +174,17 @@ export const apiService = {
   },
 
   async saveOrder(orderData: Partial<ServiceOrder>): Promise<ServiceOrder> {
+    let finalData = { ...orderData };
+    if (orderData.id) {
+      const orders = await this.getOrders();
+      const existingOrder = orders.find(o => o.id === orderData.id);
+      if (existingOrder) {
+        finalData = { ...existingOrder, ...orderData };
+      }
+    }
     return fetchApi('/orders', {
       method: 'POST',
-      body: JSON.stringify(orderData)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -170,24 +193,56 @@ export const apiService = {
   },
 
   async saveTicket(ticketData: Partial<Ticket>): Promise<Ticket> {
+    let finalData = { ...ticketData };
+    if (ticketData.id) {
+      const tickets = await this.getTickets();
+      const existingTicket = tickets.find(t => t.id === ticketData.id);
+      if (existingTicket) {
+        finalData = { ...existingTicket, ...ticketData };
+      }
+    } else {
+      finalData.createdAt = new Date().toISOString();
+      finalData.messages = [];
+    }
     return fetchApi('/tickets', {
       method: 'POST',
-      body: JSON.stringify(ticketData)
+      body: JSON.stringify(finalData)
     });
   },
 
   async updateTicketStatus(ticketId: string, status: TicketStatus): Promise<void> {
+    const tickets = await this.getTickets();
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) throw new Error("Ticket not found");
+    
+    const updatedTicket = { ...ticket, status };
+
     await fetchApi('/tickets', {
       method: 'POST',
-      body: JSON.stringify({ id: ticketId, status })
+      body: JSON.stringify(updatedTicket)
     });
   },
 
   async replyToTicket(ticketId: string, message: string): Promise<void> {
-    // Simplified for mock
+    const tickets = await this.getTickets();
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) throw new Error("Ticket not found");
+    
+    const newMessage = {
+      id: Date.now().toString(),
+      sender: currentUser?.name || 'Admin',
+      text: message,
+      timestamp: new Date().toISOString()
+    };
+    
+    const updatedTicket = {
+      ...ticket,
+      messages: [...(ticket.messages || []), newMessage]
+    };
+
     await fetchApi('/tickets', {
       method: 'POST',
-      body: JSON.stringify({ id: ticketId, message })
+      body: JSON.stringify(updatedTicket)
     });
   },
 
@@ -196,9 +251,17 @@ export const apiService = {
   },
 
   async saveHRRequest(requestData: Partial<HRRequest>): Promise<HRRequest> {
+    let finalData = { ...requestData };
+    if (requestData.id) {
+      const requests = await this.getHRRequests();
+      const existingRequest = requests.find(r => r.id === requestData.id);
+      if (existingRequest) {
+        finalData = { ...existingRequest, ...requestData };
+      }
+    }
     return fetchApi('/hrRequests', {
       method: 'POST',
-      body: JSON.stringify(requestData)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -207,9 +270,17 @@ export const apiService = {
   },
 
   async saveReport(reportData: Partial<ServiceReport>): Promise<ServiceReport> {
+    let finalData = { ...reportData };
+    if (reportData.id) {
+      const reports = await this.getReports();
+      const existingReport = reports.find(r => r.id === reportData.id);
+      if (existingReport) {
+        finalData = { ...existingReport, ...reportData };
+      }
+    }
     return fetchApi('/reports', {
       method: 'POST',
-      body: JSON.stringify(reportData)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -218,9 +289,17 @@ export const apiService = {
   },
 
   async saveTimeRecord(recordData: Partial<TimeRecord>): Promise<TimeRecord> {
+    let finalData = { ...recordData };
+    if (recordData.id) {
+      const records = await this.getTimeRecords();
+      const existingRecord = records.find(r => r.id === recordData.id);
+      if (existingRecord) {
+        finalData = { ...existingRecord, ...recordData };
+      }
+    }
     return fetchApi('/timeRecords', {
       method: 'POST',
-      body: JSON.stringify(recordData)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -229,9 +308,17 @@ export const apiService = {
   },
 
   async saveInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
+    let finalData = { ...itemData };
+    if (itemData.id) {
+      const inventory = await this.getInventory();
+      const existingItem = inventory.find(i => i.id === itemData.id);
+      if (existingItem) {
+        finalData = { ...existingItem, ...itemData };
+      }
+    }
     return fetchApi('/inventory', {
       method: 'POST',
-      body: JSON.stringify(itemData)
+      body: JSON.stringify(finalData)
     });
   },
 
@@ -240,16 +327,51 @@ export const apiService = {
   },
 
   async transferStockToTechnician(itemId: string, technicianId: string, quantity: number): Promise<void> {
-    await fetchApi('/technicianStock', {
-      method: 'POST',
-      body: JSON.stringify({ itemId, technicianId, quantity })
+    const inventory = await this.getInventory();
+    const item = inventory.find(i => i.id === itemId);
+    if (!item || item.quantity < quantity) throw new Error("Estoque insuficiente");
+
+    // Update main inventory
+    await this.saveInventoryItem({
+      ...item,
+      quantity: item.quantity - quantity
     });
+
+    // Update technician stock
+    const techStock = await fetchApi('/technicianStock');
+    const existingStock = techStock.find((s: TechnicianStockItem) => s.technicianId === technicianId && s.itemId === itemId);
+
+    if (existingStock) {
+      await fetchApi('/technicianStock', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...existingStock,
+          quantity: existingStock.quantity + quantity
+        })
+      });
+    } else {
+      await fetchApi('/technicianStock', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: `tech-stock-${Date.now()}`,
+          technicianId,
+          itemId,
+          itemName: item.name,
+          quantity
+        })
+      });
+    }
   },
 
   async createAuditLog(log: Omit<AuditLog, 'id' | 'timestamp' | 'actorName'>): Promise<void> {
     await fetchApi('/auditLogs', {
       method: 'POST',
-      body: JSON.stringify(log)
+      body: JSON.stringify({
+        ...log,
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorName: currentUser?.name || 'Sistema'
+      })
     });
   },
 
@@ -262,9 +384,13 @@ export const apiService = {
   },
 
   async markNotificationRead(id: string): Promise<void> {
+    const notifications = await this.getNotifications();
+    const notification = notifications.find(n => n.id === id);
+    if (!notification) return;
+
     await fetchApi('/notifications', {
       method: 'POST',
-      body: JSON.stringify({ id, read: true })
+      body: JSON.stringify({ ...notification, read: true })
     });
   },
 
@@ -296,45 +422,53 @@ export const apiService = {
     return fetchApi('/invoices');
   },
 
-  // Mock Real-time listeners (Polling or initial fetch)
+  // Real-time listeners (Polling)
   subscribeToOrders(role: Role, userId: string, callback: (orders: ServiceOrder[]) => void) {
     this.getOrders().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getOrders().then(callback), 5000);
+    return () => clearInterval(interval);
   },
 
   subscribeToTickets(role: Role, userId: string, callback: (tickets: Ticket[]) => void) {
     this.getTickets().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getTickets().then(callback), 5000);
+    return () => clearInterval(interval);
   },
 
   subscribeToUsers(role: Role, callback: (users: User[]) => void) {
     this.getUsers().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getUsers().then(callback), 10000);
+    return () => clearInterval(interval);
   },
 
   subscribeToReports(role: Role, userId: string, callback: (reports: ServiceReport[]) => void) {
     this.getReports().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getReports().then(callback), 10000);
+    return () => clearInterval(interval);
   },
 
   subscribeToTimeRecords(role: Role, userId: string, callback: (records: TimeRecord[]) => void) {
     this.getTimeRecords().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getTimeRecords().then(callback), 10000);
+    return () => clearInterval(interval);
   },
 
   subscribeToInventory(callback: (items: InventoryItem[]) => void) {
     this.getInventory().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getInventory().then(callback), 10000);
+    return () => clearInterval(interval);
   },
 
   subscribeToNotifications(userId: string, callback: (notifications: Notification[]) => void) {
     this.getNotifications().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getNotifications().then(callback), 5000);
+    return () => clearInterval(interval);
   },
 
   subscribeToHRRequests(role: Role, userId: string, callback: (requests: HRRequest[]) => void) {
     this.getHRRequests().then(callback);
-    return () => {};
+    const interval = setInterval(() => this.getHRRequests().then(callback), 10000);
+    return () => clearInterval(interval);
   },
 
   async testConnection() {

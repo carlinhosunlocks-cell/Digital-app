@@ -3,9 +3,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// The Pool will automatically use standard PostgreSQL environment variables:
-// PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT
-export const pool = new Pool();
+// Vercel Postgres and many managed databases provide a connection string
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+
+// Configure the pool. If a connection string is provided, use it.
+// Otherwise, it falls back to standard PG* environment variables.
+export const pool = new Pool(
+  connectionString
+    ? {
+        connectionString,
+        // Require SSL for remote connections (like AWS Aurora / Vercel)
+        ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false },
+      }
+    : {
+        // If using individual PGHOST, PGUSER, etc.
+        ssl: process.env.PGHOST && !process.env.PGHOST.includes('localhost') ? { rejectUnauthorized: false } : false,
+      }
+);
 
 // Initialize the database schema (NoSQL-like JSONB store)
 export async function initDb() {

@@ -9,108 +9,84 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 export const apiRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper to handle PostgreSQL vs Mock (if DB is not configured)
-const mockDb: Record<string, any[]> = {
-  users: [],
-  orders: [],
-  tickets: [],
-  hrRequests: [],
-  reports: [],
-  timeRecords: [],
-  inventory: [],
-  technicianStock: [],
-  auditLogs: [],
-  notifications: [],
-  invoices: [],
-  settings: []
-};
-
 async function scanTable(tableName: string) {
-  try {
-    const result = await pool.query(
-      'SELECT data FROM documents WHERE collection_name = $1',
-      [tableName]
-    );
-    return result.rows.map(row => row.data);
-  } catch (err) {
-    console.error(`PostgreSQL Scan failed for ${tableName}, falling back to mock.`, err);
-    return mockDb[tableName] || [];
-  }
+  const result = await pool.query(
+    'SELECT data FROM documents WHERE collection_name = $1',
+    [tableName]
+  );
+  return result.rows.map(row => row.data);
 }
 
 async function putItem(tableName: string, item: any) {
-  try {
-    await pool.query(
-      `INSERT INTO documents (collection_name, id, data, updated_at) 
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-       ON CONFLICT (collection_name, id) 
-       DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP`,
-      [tableName, item.id, item]
-    );
-    return item;
-  } catch (err) {
-    console.error(`PostgreSQL Put failed for ${tableName}, falling back to mock.`, err);
-    
-    if (!mockDb[tableName]) mockDb[tableName] = [];
-    const existingIndex = mockDb[tableName].findIndex(i => i.id === item.id);
-    if (existingIndex >= 0) {
-      mockDb[tableName][existingIndex] = item;
-    } else {
-      mockDb[tableName].push(item);
-    }
-    return item;
-  }
+  await pool.query(
+    `INSERT INTO documents (collection_name, id, data, updated_at) 
+     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (collection_name, id) 
+     DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP`,
+    [tableName, item.id, item]
+  );
+  return item;
 }
 
-// --- USERS ---
-apiRouter.get('/users', async (req, res) => {
-  const users = await scanTable('users');
-  res.json(users);
-});
-
-apiRouter.post('/users', async (req, res) => {
-  const user = { ...req.body, id: req.body.id || crypto.randomUUID() };
-  await putItem('users', user);
-  res.json(user);
-});
-
-// --- ORDERS ---
-apiRouter.get('/orders', async (req, res) => {
-  const orders = await scanTable('orders');
-  res.json(orders);
-});
-
-apiRouter.post('/orders', async (req, res) => {
-  const order = { ...req.body, id: req.body.id || crypto.randomUUID() };
-  await putItem('orders', order);
-  res.json(order);
-});
-
-// --- TICKETS ---
-apiRouter.get('/tickets', async (req, res) => {
-  const tickets = await scanTable('tickets');
-  res.json(tickets);
-});
-
-apiRouter.post('/tickets', async (req, res) => {
-  const ticket = { ...req.body, id: req.body.id || crypto.randomUUID() };
-  await putItem('tickets', ticket);
-  res.json(ticket);
-});
-
-// --- GENERIC GET/POST FOR OTHER COLLECTIONS ---
-const collections = ['hrRequests', 'reports', 'timeRecords', 'inventory', 'technicianStock', 'auditLogs', 'notifications', 'invoices', 'settings'];
+// --- GENERIC GET/POST/DELETE FOR ALL COLLECTIONS ---
+const collections = [
+  'users', 'orders', 'tickets', 'hrRequests', 'reports', 
+  'timeRecords', 'inventory', 'technicianStock', 'auditLogs', 
+  'notifications', 'invoices', 'settings'
+];
 
 collections.forEach(collection => {
   apiRouter.get(`/${collection}`, async (req, res) => {
-    const items = await scanTable(collection);
-    res.json(items);
+    try {
+      const items = await scanTable(collection);
+      res.json(items);
+    } catch (err: any) {
+      console.error(`PostgreSQL Scan failed for ${collection}:`, err);
+      res.status(500).json({ error: 'Failed to fetch items', message: err.message });
+    }
+  });
+
+  apiRouter.get(`/${collection}/:id`, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const result = await pool.query(
+        'SELECT data FROM documents WHERE collection_name = $1 AND id = $2',
+        [collection, id]
+      );
+      if (result.rows.length > 0) {
+        res.json(result.rows[0].data);
+      } else {
+        res.status(404).json({ error: 'Item not found' });
+      }
+    } catch (err: any) {
+      console.error(`PostgreSQL Get by ID failed for ${collection}:`, err);
+      res.status(500).json({ error: 'Failed to fetch item', message: err.message });
+    }
   });
 
   apiRouter.post(`/${collection}`, async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID() };
-    await putItem(collection, item);
-    res.json(item);
+    try {
+      const item = { ...req.body, id: req.body.id || crypto.randomUUID() };
+      await putItem(collection, item);
+      res.json(item);
+    } catch (err: any) {
+      console.error(`PostgreSQL Put failed for ${collection}:`, err);
+      res.status(500).json({ error: 'Failed to save item', message: err.message });
+    }
+  });
+
+  apiRouter.delete(`/${collection}/:id`, async (req, res) => {
+    const { id } = req.params;
+    try {
+      await pool.query(
+        'DELETE FROM documents WHERE collection_name = $1 AND id = $2',
+        [collection, id]
+      );
+      res.json({ success: true, id });
+    } catch (err: any) {
+      console.error(`PostgreSQL Delete failed for ${collection}:`, err);
+      res.status(500).json({ error: 'Failed to delete item', message: err.message });
+    }
   });
 });
 

@@ -26,6 +26,7 @@ export interface User {
   role: Role;
   avatar?: string;
   email?: string;
+  password?: string;
   status?: 'active' | 'idle';
   department?: string;
   position?: string;
