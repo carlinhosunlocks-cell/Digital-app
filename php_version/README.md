@@ -25,9 +25,9 @@ Para baixar todos os arquivos novos em um único arquivo ZIP:
 1. Acesse o seu gerenciador MySQL (phpMyAdmin ou similar).
 2. Crie um banco de dados chamado `digital_equipamentos`.
 3. Importe o arquivo `php_version/database.sql`.
-   - *Nota: O script já cria um usuário administrador padrão:*
+   - *Nota: O sistema possui um sistema de auto-configuração. Se o banco estiver vazio, o primeiro login com o e-mail abaixo definirá a senha automaticamente:*
      - **E-mail:** `admin@admin.com`
-     - **Senha:** `admin`
+     - **Senha Padrão:** `admin` (ou qualquer senha que você digitar no primeiro acesso)
 
 ## Passo 2: Configurar a Conexão
 1. Abra o arquivo `php_version/config.php`.

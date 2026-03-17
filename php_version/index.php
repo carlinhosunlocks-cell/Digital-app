@@ -22,6 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['user_role'] = $user['role'];
         redirect('dashboard.php');
     } else {
+        // Fallback: Se não houver nenhum usuário no banco, cria o primeiro admin com a senha digitada
+        $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+        if ($count == 0 && ($email === 'admin@admin.com' || $email === 'amandamartins8901@gmail.com')) {
+            $hashed = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, 'ADMIN', 'Gestão')");
+            $stmt->execute(['Administrador Master', $email, $hashed]);
+            
+            $_SESSION['user_id'] = $pdo->lastInsertId();
+            $_SESSION['user_name'] = 'Administrador Master';
+            $_SESSION['user_role'] = 'ADMIN';
+            redirect('dashboard.php');
+        }
         $error = 'E-mail ou senha incorretos.';
     }
 }
