@@ -6,10 +6,20 @@ Esta é a versão **100% PHP Nativa**, sem dependências de Node.js ou React par
 - `index.php`: Tela de login.
 - `dashboard.php`: Visão geral do sistema.
 - `orders.php`: Gestão de Ordens de Serviço.
+- `inventory.php`: Controle de estoque e peças.
+- `tickets.php`: Central de suporte ao cliente.
+- `users.php`: Gestão de equipe e usuários (apenas Admin).
 - `config.php`: Configuração central e conexão com banco de dados.
 - `database.sql`: Schema completo do banco de dados.
 
 ---
+
+## Como baixar os arquivos:
+Para baixar todos os arquivos novos em um único arquivo ZIP:
+1. No menu superior do **AI Studio**, clique no ícone de engrenagem (**Settings**).
+2. Selecione a opção **"Export to ZIP"**.
+3. Todos os arquivos da pasta `/php_version` estarão incluídos no download.
+
 
 ## Passo 1: Configurar o Banco de Dados
 1. Acesse o seu gerenciador MySQL (phpMyAdmin ou similar).
