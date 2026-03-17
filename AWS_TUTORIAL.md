@@ -56,7 +56,6 @@ No painel de configurações do seu ambiente (ou criando um arquivo `.env` na ra
 
 *   `AWS_ACCESS_KEY_ID`: A chave de acesso do seu usuário IAM.
 *   `AWS_SECRET_ACCESS_KEY`: A chave secreta do seu usuário IAM.
-*   `AWS_REGION`: A região onde você criou seus recursos (ex: `us-east-1`, `sa-east-1`).
 *   `AWS_S3_BUCKET_NAME`: O nome do bucket S3 que você criou no Passo 1.
 
 ## Passo 4: Autenticação (Cognito - Próximos Passos)
